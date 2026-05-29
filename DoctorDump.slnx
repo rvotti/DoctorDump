@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/SampleCrashingApp/SampleCrashingApp.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/DoctorDump.Core/DoctorDump.Core.csproj" />
+    <Project Path="src/DoctorDump.Reporter/DoctorDump.Reporter.csproj" />
+    <Project Path="src/DoctorDump.UI/DoctorDump.UI.csproj" />
+  </Folder>
+</Solution>

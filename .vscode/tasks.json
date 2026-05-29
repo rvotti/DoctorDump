@@ -1,0 +1,76 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build: dotnet",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "DoctorDump.slnx"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build: agent",
+      "type": "process",
+      "command": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe",
+      "args": [
+        "src\\DoctorDump.Agent\\DoctorDump.Agent.vcxproj",
+        "/p:Configuration=Debug",
+        "/p:Platform=x64"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build: all",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "build: agent",
+        "build: dotnet"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "run: ui",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "src\\DoctorDump.UI\\DoctorDump.UI.csproj"
+      ],
+      "dependsOn": "build: all",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "run: sample crash app",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "samples\\SampleCrashingApp\\SampleCrashingApp.csproj"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "agent: list processes",
+      "type": "process",
+      "command": "${workspaceFolder}\\src\\DoctorDump.Agent\\x64\\Debug\\DoctorDump.Agent.exe",
+      "args": [
+        "list",
+        "--json"
+      ],
+      "dependsOn": "build: agent",
+      "problemMatcher": []
+    }
+  ]
+}
+
