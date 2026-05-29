@@ -7,6 +7,7 @@ DoctorDump is a Windows crash diagnostics project for native and .NET desktop ap
 ```text
 src/
   DoctorDump.Agent/      C++ Win32 dump capture CLI
+  DoctorDump.Analyzer/   cdb.exe/Windows Debugging Tools analyzer
   DoctorDump.Core/       Shared .NET contracts and paths
   DoctorDump.Reporter/   HTML report generator
   DoctorDump.UI/         WPF desktop shell
@@ -21,6 +22,7 @@ docs/
 ```powershell
 DoctorDump.Agent.exe list --json
 DoctorDump.Agent.exe capture --pid 1234 --type mini --output "$env:LOCALAPPDATA\DumpDoctor\dumps"
+DoctorDump.Analyzer.exe --dump file.dmp --dump-id "<guid>" --output "<capture-folder>"
 DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --output report.html
 ```
 
@@ -30,11 +32,12 @@ DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --outp
 - Build `DoctorDump.Agent` from Visual Studio Developer Command Prompt or Visual Studio because it needs the VC++ toolchain and `Dbghelp.lib`.
 - VS Code tasks are included. Use `Terminal > Run Build Task` and choose `build: all`.
 - The WPF UI expects the agent at `src\DoctorDump.Agent\x64\Debug\DoctorDump.Agent.exe` during local development.
+- Analyzer Phase 1 uses `cdb.exe` from Debugging Tools for Windows. If it is not installed, the analyzer writes a graceful `DebuggerNotFound` result.
 
 ## Roadmap
 
 - Add crash monitoring mode.
-- Add `cdb.exe`/WinDbg-based analyzer.
-- Generate reports automatically after capture.
+- Improve `cdb.exe` parser coverage for more crash shapes.
+- Add real managed dump support with SOS.
 - Add settings for symbol path and dump retention.
 - Add Azure upload and team dashboard after the local MVP is stable.

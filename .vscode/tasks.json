@@ -70,7 +70,18 @@
       ],
       "dependsOn": "build: agent",
       "problemMatcher": []
+    },
+    {
+      "label": "analyzer: help",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "src\\DoctorDump.Analyzer\\DoctorDump.Analyzer.csproj"
+      ],
+      "dependsOn": "build: dotnet",
+      "problemMatcher": "$msCompile"
     }
   ]
 }
-

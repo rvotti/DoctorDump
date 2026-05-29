@@ -89,6 +89,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        await AnalyzeDumpAsync(metadataPath);
         var reportPath = await GenerateReportAsync(metadataPath);
         StatusText.Text = reportPath is null
             ? $"{output.Trim()} Report generation skipped."
@@ -215,6 +216,55 @@ public partial class MainWindow : Window
         return Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Reporter", "bin", "Debug", "net10.0", "DoctorDump.Reporter.exe"));
     }
 
+    private static string FindAnalyzerPath()
+    {
+        var baseDirectory = AppContext.BaseDirectory;
+        return Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Analyzer", "bin", "Debug", "net10.0", "DoctorDump.Analyzer.exe"));
+    }
+
+    private static async Task AnalyzeDumpAsync(string metadataPath)
+    {
+        var metadata = await ReadMetadataAsync(metadataPath);
+        var folder = Path.GetDirectoryName(metadataPath)!;
+        var analyzerPath = FindAnalyzerPath();
+
+        if (!File.Exists(analyzerPath))
+        {
+            await WritePendingAnalysisAsync(
+                metadata,
+                folder,
+                "Analyzer executable was not found. Build DoctorDump.Analyzer and re-run analysis.");
+            return;
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = analyzerPath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        startInfo.ArgumentList.Add("--dump");
+        startInfo.ArgumentList.Add(metadata.DumpFilePath);
+        startInfo.ArgumentList.Add("--dump-id");
+        startInfo.ArgumentList.Add(metadata.DumpId.ToString());
+        startInfo.ArgumentList.Add("--output");
+        startInfo.ArgumentList.Add(folder);
+
+        using var analyzer = Process.Start(startInfo);
+        if (analyzer is null)
+        {
+            await WritePendingAnalysisAsync(metadata, folder, "Could not start analyzer process.");
+            return;
+        }
+
+        await analyzer.WaitForExitAsync();
+        if (analyzer.ExitCode != 0 && !File.Exists(Path.Combine(folder, "analysis.json")))
+        {
+            await WritePendingAnalysisAsync(metadata, folder, "Analyzer failed before producing analysis.json.");
+        }
+    }
+
     private static async Task<string?> GenerateReportAsync(string metadataPath)
     {
         var metadata = await ReadMetadataAsync(metadataPath);
@@ -270,5 +320,20 @@ public partial class MainWindow : Window
         await using var stream = File.OpenRead(metadataPath);
         return await JsonSerializer.DeserializeAsync<DumpMetadata>(stream, JsonDefaults.Options)
             ?? throw new InvalidOperationException($"Could not read metadata from {metadataPath}.");
+    }
+
+    private static async Task WritePendingAnalysisAsync(DumpMetadata metadata, string folder, string reason)
+    {
+        var analysis = new AnalysisResult
+        {
+            DumpId = metadata.DumpId,
+            Status = "Pending",
+            SymbolStatus = "NotRun",
+            ProbableCause = reason
+        };
+
+        await File.WriteAllTextAsync(
+            Path.Combine(folder, "analysis.json"),
+            JsonSerializer.Serialize(analysis, JsonDefaults.Options));
     }
 }

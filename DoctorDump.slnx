@@ -3,6 +3,7 @@
     <Project Path="samples/SampleCrashingApp/SampleCrashingApp.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/DoctorDump.Analyzer/DoctorDump.Analyzer.csproj" />
     <Project Path="src/DoctorDump.Core/DoctorDump.Core.csproj" />
     <Project Path="src/DoctorDump.Reporter/DoctorDump.Reporter.csproj" />
     <Project Path="src/DoctorDump.UI/DoctorDump.UI.csproj" />

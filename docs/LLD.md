@@ -5,6 +5,7 @@ DumpDoctor is a local-first Windows diagnostic tool for capturing process dumps,
 ## MVP Modules
 
 - `DoctorDump.Agent`: native C++ command-line tool for process enumeration and dump capture.
+- `DoctorDump.Analyzer`: .NET console tool that runs `cdb.exe`, saves raw debugger output, and emits `analysis.json`.
 - `DoctorDump.Core`: shared .NET models, paths, and serialization helpers.
 - `DoctorDump.Reporter`: .NET console tool that turns metadata and analysis JSON into HTML/Markdown reports.
 - `DoctorDump.UI`: WPF desktop shell for selecting processes, capturing dumps, and viewing history.
@@ -76,6 +77,7 @@ logs\
 ```text
 DoctorDump.Agent.exe list --json
 DoctorDump.Agent.exe capture --pid 1234 --type mini --output "%LOCALAPPDATA%\DumpDoctor\dumps"
+DoctorDump.Analyzer.exe --dump dump.dmp --dump-id {dumpId} --output {capture-folder}
 DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --output report.html
 ```
 
@@ -88,8 +90,9 @@ DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --outp
 5. Agent opens the target process with dump permissions.
 6. Agent calls `MiniDumpWriteDump`.
 7. Agent writes dump and metadata JSON.
-8. Reporter generates an initial HTML report.
-9. UI refreshes dump history.
+8. Analyzer runs `cdb.exe` and writes `raw-debugger-output.txt` plus `analysis.json`.
+9. Reporter generates an HTML report.
+10. UI refreshes dump history.
 
 ## Agent Design
 
@@ -123,11 +126,28 @@ The WPF UI is intentionally simple for MVP:
 - Report preview/open action.
 - Settings page for output folder and symbol path.
 
-## Analyzer Roadmap
+## Analyzer Design
 
-MVP stores metadata and generates a basic report. The next step is a real analyzer layer using one of:
+Analyzer Phase 1 shells out to `cdb.exe` because it is fast to integrate and easy to validate manually. It runs:
 
-- `cdb.exe` command automation with `!analyze -v`, `k`, and `lm`.
-- `DbgEng` COM APIs for structured stack/module extraction.
+```text
+.sympath {symbolPath}
+.reload
+!analyze -v
+~* k
+lm
+q
+```
 
-Use `cdb.exe` first because it is easier to integrate and demo.
+Outputs:
+
+- `raw-debugger-output.txt`
+- `analysis.json`
+
+If `cdb.exe` is not installed, the analyzer writes a `DebuggerNotFound` result so the UI/report flow still completes.
+
+Future analyzer improvements:
+
+- Improve regex parsing of `!analyze -v` variants.
+- Add `DbgEng` COM integration for structured analysis.
+- Add SOS support for managed .NET dumps.

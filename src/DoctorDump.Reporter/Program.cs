@@ -14,9 +14,13 @@ if (options is null)
 
 var metadata = await ReadJsonAsync<DumpMetadata>(options.MetadataPath);
 var analysis = await ReadAnalysisOrPendingAsync(options.AnalysisPath, metadata.DumpId);
+var rawDebuggerOutputPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.AnalysisPath))!, "raw-debugger-output.txt");
+var rawDebuggerOutput = File.Exists(rawDebuggerOutputPath)
+    ? await File.ReadAllTextAsync(rawDebuggerOutputPath)
+    : null;
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(options.OutputPath))!);
-await File.WriteAllTextAsync(options.OutputPath, RenderHtml(metadata, analysis), Encoding.UTF8);
+await File.WriteAllTextAsync(options.OutputPath, RenderHtml(metadata, analysis, rawDebuggerOutput), Encoding.UTF8);
 Console.WriteLine(options.OutputPath);
 return 0;
 
@@ -51,7 +55,7 @@ static async Task<AnalysisResult> ReadAnalysisOrPendingAsync(string path, Guid d
     }
 }
 
-static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis)
+static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis, string? rawDebuggerOutput)
 {
     var stackRows = analysis.CallStack.Count == 0
         ? "<tr><td colspan=\"5\">No stack frames available yet.</td></tr>"
@@ -75,6 +79,8 @@ static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis)
             th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
             th { background: #f3f4f6; }
             code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }
+            pre { background: #111827; color: #f9fafb; padding: 14px; border-radius: 6px; overflow: auto; max-height: 520px; }
+            summary { cursor: pointer; font-weight: 600; margin-top: 20px; }
           </style>
         </head>
         <body>
@@ -106,6 +112,8 @@ static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis)
 
           <h2>System</h2>
           <p>{{E(metadata.MachineName)}} | {{E(metadata.OsVersion)}} | {{E(metadata.Architecture)}} | DoctorDump {{E(metadata.DoctorDumpVersion)}}</p>
+
+          {{RawOutputSection(rawDebuggerOutput)}}
         </body>
         </html>
         """;
@@ -113,6 +121,11 @@ static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis)
 
 static string Item(string label, string value) =>
     $"""<div class="item"><div class="label">{E(label)}</div><div class="value">{E(value)}</div></div>""";
+
+static string RawOutputSection(string? rawDebuggerOutput) =>
+    string.IsNullOrWhiteSpace(rawDebuggerOutput)
+        ? string.Empty
+        : $"""<details><summary>Raw Debugger Output</summary><pre>{E(rawDebuggerOutput)}</pre></details>""";
 
 static string E(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
