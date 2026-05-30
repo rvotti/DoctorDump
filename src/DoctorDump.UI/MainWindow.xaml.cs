@@ -26,7 +26,13 @@ public partial class MainWindow : Window
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => RefreshProcesses();
 
-    private async void Capture_Click(object sender, RoutedEventArgs e)
+    private async void Capture_Click(object sender, RoutedEventArgs e) =>
+        await RunAgentWorkflowAsync("capture", "Capturing dump", "Captured dump");
+
+    private async void MonitorCrash_Click(object sender, RoutedEventArgs e) =>
+        await RunAgentWorkflowAsync("monitor", "Monitoring for crash", "Captured crash dump");
+
+    private async Task RunAgentWorkflowAsync(string command, string progressVerb, string successVerb)
     {
         if (ProcessGrid.SelectedItem is not ProcessSnapshot process)
         {
@@ -44,7 +50,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        StatusText.Text = $"Capturing dump for {process.Name} ({process.Pid})...";
+        StatusText.Text = $"{progressVerb} for {process.Name} ({process.Pid})...";
 
         var startInfo = new ProcessStartInfo
         {
@@ -53,7 +59,7 @@ public partial class MainWindow : Window
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
-        startInfo.ArgumentList.Add("capture");
+        startInfo.ArgumentList.Add(command);
         startInfo.ArgumentList.Add("--pid");
         startInfo.ArgumentList.Add(process.Pid.ToString());
         startInfo.ArgumentList.Add("--type");
@@ -74,7 +80,7 @@ public partial class MainWindow : Window
 
         if (capture.ExitCode != 0)
         {
-            StatusText.Text = $"Capture failed: {error.Trim()}";
+            StatusText.Text = $"{command} failed: {error.Trim()}";
             return;
         }
 
@@ -93,7 +99,7 @@ public partial class MainWindow : Window
         var reportPath = await GenerateReportAsync(metadataPath);
         StatusText.Text = reportPath is null
             ? $"{output.Trim()} Report generation skipped."
-            : $"Captured dump and generated report: {reportPath}";
+            : $"{successVerb} and generated report: {reportPath}";
 
         RefreshHistory();
     }
@@ -250,6 +256,11 @@ public partial class MainWindow : Window
         startInfo.ArgumentList.Add(metadata.DumpId.ToString());
         startInfo.ArgumentList.Add("--output");
         startInfo.ArgumentList.Add(folder);
+        if (!string.IsNullOrWhiteSpace(metadata.ExceptionCode))
+        {
+            startInfo.ArgumentList.Add("--exception-code");
+            startInfo.ArgumentList.Add(metadata.ExceptionCode);
+        }
 
         using var analyzer = Process.Start(startInfo);
         if (analyzer is null)

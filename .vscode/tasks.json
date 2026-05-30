@@ -72,6 +72,16 @@
       "problemMatcher": []
     },
     {
+      "label": "agent: monitor help",
+      "type": "process",
+      "command": "${workspaceFolder}\\src\\DoctorDump.Agent\\x64\\Debug\\DoctorDump.Agent.exe",
+      "args": [
+        "monitor"
+      ],
+      "dependsOn": "build: agent",
+      "problemMatcher": []
+    },
+    {
       "label": "analyzer: help",
       "type": "process",
       "command": "dotnet",

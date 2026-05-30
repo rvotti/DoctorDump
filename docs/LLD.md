@@ -77,6 +77,7 @@ logs\
 ```text
 DoctorDump.Agent.exe list --json
 DoctorDump.Agent.exe capture --pid 1234 --type mini --output "%LOCALAPPDATA%\DumpDoctor\dumps"
+DoctorDump.Agent.exe monitor --pid 1234 --type mini --output "%LOCALAPPDATA%\DumpDoctor\dumps"
 DoctorDump.Analyzer.exe --dump dump.dmp --dump-id {dumpId} --output {capture-folder}
 DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --output report.html
 ```
@@ -93,6 +94,17 @@ DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --outp
 8. Analyzer runs `cdb.exe` and writes `raw-debugger-output.txt` plus `analysis.json`.
 9. Reporter generates an HTML report.
 10. UI refreshes dump history.
+
+## Crash Monitor Flow
+
+1. UI requests process list.
+2. User selects a process and clicks Monitor Crash.
+3. Agent attaches with `DebugActiveProcess`.
+4. Agent waits for a second-chance exception.
+5. Agent captures a dump while the process is stopped at the crash.
+6. Agent writes crash metadata including the exception code from the debug event.
+7. UI runs Analyzer with the metadata exception code.
+8. Reporter generates the HTML report.
 
 ## Agent Design
 

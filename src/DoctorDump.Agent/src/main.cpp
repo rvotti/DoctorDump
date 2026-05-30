@@ -147,6 +147,13 @@ std::wstring GetFileName(const std::wstring& path, DWORD pid)
     return fs::path(path).filename().wstring();
 }
 
+std::wstring FormatExceptionCode(DWORD exceptionCode)
+{
+    wchar_t buffer[16]{};
+    swprintf_s(buffer, L"0x%08X", exceptionCode);
+    return buffer;
+}
+
 int ListProcesses(bool json)
 {
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -203,21 +210,57 @@ int ListProcesses(bool json)
     return 0;
 }
 
-int CaptureDump(DWORD pid, const fs::path& output, const std::wstring& dumpType)
+MINIDUMP_TYPE ResolveDumpType(const std::wstring& dumpType)
 {
-    HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
-    if (!process)
-    {
-        std::wcerr << L"OpenProcess failed: " << GetLastErrorMessage() << L"\n";
-        return 1;
-    }
+    return dumpType == L"full"
+        ? static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemory | MiniDumpWithHandleData | MiniDumpWithThreadInfo)
+        : static_cast<MINIDUMP_TYPE>(MiniDumpNormal | MiniDumpWithThreadInfo);
+}
 
+void WriteMetadata(
+    const fs::path& metadataPath,
+    const std::wstring& dumpId,
+    DWORD pid,
+    const std::wstring& processPath,
+    const fs::path& dumpPath,
+    const std::wstring& dumpType,
+    const std::wstring& captureReason,
+    const std::wstring& exceptionCode)
+{
+    const auto processName = GetFileName(processPath, pid);
+
+    std::wofstream metadata(metadataPath);
+    metadata
+        << L"{\n"
+        << L"  \"dumpId\": \"" << EscapeJson(dumpId) << L"\",\n"
+        << L"  \"processName\": \"" << EscapeJson(processName) << L"\",\n"
+        << L"  \"pid\": " << pid << L",\n"
+        << L"  \"processPath\": \"" << EscapeJson(processPath) << L"\",\n"
+        << L"  \"architecture\": \"Unknown\",\n"
+        << L"  \"capturedAtUtc\": \"" << UtcNowIso8601() << L"\",\n"
+        << L"  \"captureReason\": \"" << EscapeJson(captureReason) << L"\",\n"
+        << L"  \"exceptionCode\": " << (exceptionCode.empty() ? L"null" : (L"\"" + EscapeJson(exceptionCode) + L"\"")) << L",\n"
+        << L"  \"dumpType\": \"" << (dumpType == L"full" ? L"FullDump" : L"MiniDump") << L"\",\n"
+        << L"  \"dumpFilePath\": \"" << EscapeJson(dumpPath.wstring()) << L"\",\n"
+        << L"  \"machineName\": \"" << EscapeJson(GetMachineName()) << L"\",\n"
+        << L"  \"osVersion\": \"Windows\",\n"
+        << L"  \"doctorDumpVersion\": \"0.1.0\"\n"
+        << L"}\n";
+}
+
+int CaptureDumpWithHandle(
+    HANDLE process,
+    DWORD pid,
+    const fs::path& output,
+    const std::wstring& dumpType,
+    const std::wstring& captureReason,
+    const std::wstring& exceptionCode)
+{
     const auto dumpId = CreateGuidString();
     const auto captureFolder = output / dumpId;
     fs::create_directories(captureFolder);
     const auto dumpPath = captureFolder / (dumpId + L".dmp");
     const auto processPath = GetProcessPath(pid);
-    const auto processName = GetFileName(processPath, pid);
 
     HANDLE file = CreateFileW(
         dumpPath.c_str(),
@@ -230,18 +273,12 @@ int CaptureDump(DWORD pid, const fs::path& output, const std::wstring& dumpType)
 
     if (file == INVALID_HANDLE_VALUE)
     {
-        CloseHandle(process);
         std::wcerr << L"CreateFileW failed: " << GetLastErrorMessage() << L"\n";
         return 1;
     }
 
-    const MINIDUMP_TYPE type = dumpType == L"full"
-        ? static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemory | MiniDumpWithHandleData | MiniDumpWithThreadInfo)
-        : static_cast<MINIDUMP_TYPE>(MiniDumpNormal | MiniDumpWithThreadInfo);
-
-    const BOOL ok = MiniDumpWriteDump(process, pid, file, type, nullptr, nullptr, nullptr);
+    const BOOL ok = MiniDumpWriteDump(process, pid, file, ResolveDumpType(dumpType), nullptr, nullptr, nullptr);
     CloseHandle(file);
-    CloseHandle(process);
 
     if (!ok)
     {
@@ -250,26 +287,146 @@ int CaptureDump(DWORD pid, const fs::path& output, const std::wstring& dumpType)
     }
 
     const auto metadataPath = captureFolder / L"metadata.json";
-    std::wofstream metadata(metadataPath);
-    metadata
-        << L"{\n"
-        << L"  \"dumpId\": \"" << EscapeJson(dumpId) << L"\",\n"
-        << L"  \"processName\": \"" << EscapeJson(processName) << L"\",\n"
-        << L"  \"pid\": " << pid << L",\n"
-        << L"  \"processPath\": \"" << EscapeJson(processPath) << L"\",\n"
-        << L"  \"architecture\": \"Unknown\",\n"
-        << L"  \"capturedAtUtc\": \"" << UtcNowIso8601() << L"\",\n"
-        << L"  \"captureReason\": \"Manual\",\n"
-        << L"  \"exceptionCode\": null,\n"
-        << L"  \"dumpType\": \"" << (dumpType == L"full" ? L"FullDump" : L"MiniDump") << L"\",\n"
-        << L"  \"dumpFilePath\": \"" << EscapeJson(dumpPath.wstring()) << L"\",\n"
-        << L"  \"machineName\": \"" << EscapeJson(GetMachineName()) << L"\",\n"
-        << L"  \"osVersion\": \"Windows\",\n"
-        << L"  \"doctorDumpVersion\": \"0.1.0\"\n"
-        << L"}\n";
+    WriteMetadata(metadataPath, dumpId, pid, processPath, dumpPath, dumpType, captureReason, exceptionCode);
 
     std::wcout << L"Captured dump: " << dumpPath.wstring() << L"\n";
     return 0;
+}
+
+int CaptureDump(DWORD pid, const fs::path& output, const std::wstring& dumpType)
+{
+    HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
+    if (!process)
+    {
+        std::wcerr << L"OpenProcess failed: " << GetLastErrorMessage() << L"\n";
+        return 1;
+    }
+
+    const auto result = CaptureDumpWithHandle(process, pid, output, dumpType, L"Manual", L"");
+    CloseHandle(process);
+    return result;
+}
+
+int MonitorProcess(DWORD pid, const fs::path& output, const std::wstring& dumpType)
+{
+    if (!DebugActiveProcess(pid))
+    {
+        std::wcerr << L"DebugActiveProcess failed: " << GetLastErrorMessage() << L"\n";
+        return 1;
+    }
+
+    DebugSetProcessKillOnExit(FALSE);
+    std::wcout << L"Monitoring process " << pid << L" for unhandled exceptions...\n";
+
+    HANDLE processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
+    bool captured = false;
+    int result = 0;
+
+    while (!captured)
+    {
+        DEBUG_EVENT debugEvent{};
+        if (!WaitForDebugEvent(&debugEvent, INFINITE))
+        {
+            std::wcerr << L"WaitForDebugEvent failed: " << GetLastErrorMessage() << L"\n";
+            result = 1;
+            break;
+        }
+
+        DWORD continueStatus = DBG_CONTINUE;
+
+        switch (debugEvent.dwDebugEventCode)
+        {
+        case CREATE_PROCESS_DEBUG_EVENT:
+            if (processHandle == nullptr)
+            {
+                processHandle = debugEvent.u.CreateProcessInfo.hProcess;
+            }
+            else if (debugEvent.u.CreateProcessInfo.hProcess)
+            {
+                CloseHandle(debugEvent.u.CreateProcessInfo.hProcess);
+            }
+            if (debugEvent.u.CreateProcessInfo.hThread)
+            {
+                CloseHandle(debugEvent.u.CreateProcessInfo.hThread);
+            }
+            if (debugEvent.u.CreateProcessInfo.hFile)
+            {
+                CloseHandle(debugEvent.u.CreateProcessInfo.hFile);
+            }
+            break;
+
+        case CREATE_THREAD_DEBUG_EVENT:
+            if (debugEvent.u.CreateThread.hThread)
+            {
+                CloseHandle(debugEvent.u.CreateThread.hThread);
+            }
+            break;
+
+        case LOAD_DLL_DEBUG_EVENT:
+            if (debugEvent.u.LoadDll.hFile)
+            {
+                CloseHandle(debugEvent.u.LoadDll.hFile);
+            }
+            break;
+
+        case EXCEPTION_DEBUG_EVENT:
+        {
+            const auto exception = debugEvent.u.Exception;
+            if (exception.dwFirstChance == 0)
+            {
+                if (processHandle == nullptr)
+                {
+                    processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
+                }
+
+                if (processHandle == nullptr)
+                {
+                    std::wcerr << L"OpenProcess failed during crash capture: " << GetLastErrorMessage() << L"\n";
+                    result = 1;
+                }
+                else
+                {
+                    result = CaptureDumpWithHandle(
+                        processHandle,
+                        pid,
+                        output,
+                        dumpType,
+                        L"Crash",
+                        FormatExceptionCode(exception.ExceptionRecord.ExceptionCode));
+                }
+
+                captured = true;
+                continueStatus = DBG_EXCEPTION_NOT_HANDLED;
+            }
+            else
+            {
+                continueStatus = DBG_EXCEPTION_NOT_HANDLED;
+            }
+            break;
+        }
+
+        case EXIT_PROCESS_DEBUG_EVENT:
+            std::wcerr << L"Process exited before an unhandled exception was observed.\n";
+            captured = true;
+            result = 2;
+            break;
+
+        default:
+            continueStatus = DBG_CONTINUE;
+            break;
+        }
+
+        ContinueDebugEvent(debugEvent.dwProcessId, debugEvent.dwThreadId, continueStatus);
+    }
+
+    DebugActiveProcessStop(pid);
+
+    if (processHandle)
+    {
+        CloseHandle(processHandle);
+    }
+
+    return result;
 }
 
 void PrintUsage()
@@ -278,7 +435,8 @@ void PrintUsage()
         << L"DoctorDump.Agent\n\n"
         << L"Usage:\n"
         << L"  DoctorDump.Agent.exe list [--json]\n"
-        << L"  DoctorDump.Agent.exe capture --pid 1234 --type mini --output C:\\Dumps\n";
+        << L"  DoctorDump.Agent.exe capture --pid 1234 --type mini --output C:\\Dumps\n"
+        << L"  DoctorDump.Agent.exe monitor --pid 1234 --type mini --output C:\\Dumps\n";
 }
 
 Args ParseArgs(int argc, wchar_t* argv[])
@@ -324,6 +482,11 @@ int wmain(int argc, wchar_t* argv[])
     if (args.command == L"capture" && args.pid != 0 && !args.output.empty())
     {
         return CaptureDump(args.pid, args.output, args.dumpType);
+    }
+
+    if (args.command == L"monitor" && args.pid != 0 && !args.output.empty())
+    {
+        return MonitorProcess(args.pid, args.output, args.dumpType);
     }
 
     PrintUsage();

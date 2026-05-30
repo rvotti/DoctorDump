@@ -28,7 +28,7 @@ else
 {
     var rawOutput = await CdbRunner.RunAsync(cdbPath, options.DumpPath, options.SymbolPath, options.CancellationToken);
     await File.WriteAllTextAsync(rawOutputPath, rawOutput, options.CancellationToken);
-    analysis = CdbOutputParser.Parse(options.DumpId, rawOutput);
+    analysis = CdbOutputParser.Parse(options.DumpId, rawOutput, options.ExceptionCode);
 }
 
 await File.WriteAllTextAsync(analysisPath, JsonSerializer.Serialize(analysis, JsonDefaults.Options), options.CancellationToken);
@@ -54,6 +54,7 @@ internal sealed record CliOptions(
     string OutputDirectory,
     string SymbolPath,
     string? CdbPath,
+    string? ExceptionCode,
     CancellationToken CancellationToken)
 {
     public static CliOptions? Parse(string[] args)
@@ -63,6 +64,7 @@ internal sealed record CliOptions(
         string? output = null;
         string? symbols = null;
         string? cdbPath = null;
+        string? exceptionCode = null;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -71,6 +73,7 @@ internal sealed record CliOptions(
             else if (args[i] == "--output" && i + 1 < args.Length) output = args[++i];
             else if (args[i] == "--symbols" && i + 1 < args.Length) symbols = args[++i];
             else if (args[i] == "--cdb" && i + 1 < args.Length) cdbPath = args[++i];
+            else if (args[i] == "--exception-code" && i + 1 < args.Length) exceptionCode = args[++i];
         }
 
         if (dumpPath is null || !File.Exists(dumpPath) || dumpId is null || !Guid.TryParse(dumpId, out var id) || output is null)
@@ -84,6 +87,7 @@ internal sealed record CliOptions(
             output,
             string.IsNullOrWhiteSpace(symbols) ? @"srv*C:\Symbols*https://msdl.microsoft.com/download/symbols" : symbols,
             cdbPath,
+            exceptionCode,
             CancellationToken.None);
     }
 }
@@ -172,9 +176,9 @@ internal static class CdbRunner
 
 internal static partial class CdbOutputParser
 {
-    public static AnalysisResult Parse(Guid dumpId, string rawOutput)
+    public static AnalysisResult Parse(Guid dumpId, string rawOutput, string? preferredExceptionCode)
     {
-        var exceptionCode = NormalizeExceptionCode(
+        var exceptionCode = NormalizeExceptionCode(preferredExceptionCode) ?? NormalizeExceptionCode(
             FirstMatch(rawOutput, ExceptionCodeRegex())
             ?? FirstMatch(rawOutput, ExceptionCodeStrRegex()));
         var exceptionDescription = DescribeException(exceptionCode);
