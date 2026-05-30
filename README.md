@@ -32,7 +32,7 @@ DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --outp
 - Build `DoctorDump.Agent` from Visual Studio Developer Command Prompt or Visual Studio because it needs the VC++ toolchain and `Dbghelp.lib`.
 - VS Code tasks are included. Use `Terminal > Run Build Task` and choose `build: all`.
 - The WPF UI expects the agent at `src\DoctorDump.Agent\x64\Debug\DoctorDump.Agent.exe` during local development.
-- Analyzer Phase 1 uses `cdb.exe` from Debugging Tools for Windows. If it is not installed, the analyzer writes a graceful `DebuggerNotFound` result.
+- Analyzer Phase 1 uses `cdb.exe` from Debugging Tools for Windows. If it is not installed, run the Windows SDK installer with `OptionId.WindowsDesktopDebuggers`. The analyzer writes a graceful `DebuggerNotFound` result when `cdb.exe` is unavailable.
 
 ## Roadmap
 

@@ -123,7 +123,8 @@ internal static class CdbRunner
 {
     public static async Task<string> RunAsync(string cdbPath, string dumpPath, string symbolPath, CancellationToken cancellationToken)
     {
-        var commands = string.Join(";", new[]
+        var commandFile = Path.Combine(Path.GetTempPath(), $"doctordump-cdb-{Guid.NewGuid():N}.txt");
+        await File.WriteAllLinesAsync(commandFile, new[]
         {
             $".sympath {symbolPath}",
             ".reload",
@@ -131,7 +132,7 @@ internal static class CdbRunner
             "~* k",
             "lm",
             "q"
-        });
+        }, cancellationToken);
 
         var startInfo = new ProcessStartInfo
         {
@@ -143,15 +144,29 @@ internal static class CdbRunner
         };
         startInfo.ArgumentList.Add("-z");
         startInfo.ArgumentList.Add(dumpPath);
-        startInfo.ArgumentList.Add("-c");
-        startInfo.ArgumentList.Add(commands);
+        startInfo.ArgumentList.Add("-cf");
+        startInfo.ArgumentList.Add(commandFile);
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start cdb.exe.");
-        var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        try
+        {
+            using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start cdb.exe.");
+            var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken);
 
-        return stdout + Environment.NewLine + stderr;
+            return stdout + Environment.NewLine + stderr;
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(commandFile);
+            }
+            catch
+            {
+                // Best effort cleanup only.
+            }
+        }
     }
 }
 
@@ -159,9 +174,11 @@ internal static partial class CdbOutputParser
 {
     public static AnalysisResult Parse(Guid dumpId, string rawOutput)
     {
-        var exceptionCode = FirstMatch(rawOutput, ExceptionCodeRegex());
+        var exceptionCode = NormalizeExceptionCode(
+            FirstMatch(rawOutput, ExceptionCodeRegex())
+            ?? FirstMatch(rawOutput, ExceptionCodeStrRegex()));
         var exceptionDescription = DescribeException(exceptionCode);
-        var faultingModule = FirstMatch(rawOutput, FaultingModuleRegex())
+        var faultingModule = CleanModuleName(FirstMatch(rawOutput, FaultingModuleRegex()))
             ?? FirstMatch(rawOutput, ImageNameRegex())
             ?? FirstMatch(rawOutput, ModuleNameRegex());
         var probableCause = FirstMatch(rawOutput, ProbablyCausedByRegex());
@@ -187,7 +204,7 @@ internal static partial class CdbOutputParser
 
         foreach (Match match in StackFrameRegex().Matches(rawOutput))
         {
-            var symbol = match.Groups["symbol"].Value;
+            var symbol = match.Groups["symbol"].Value.Trim();
             var module = symbol.Contains('!') ? symbol.Split('!', 2)[0] : null;
             var function = symbol.Contains('!') ? symbol.Split('!', 2)[1] : symbol;
 
@@ -210,7 +227,15 @@ internal static partial class CdbOutputParser
     private static int? ParseFaultingThread(string rawOutput)
     {
         var value = FirstMatch(rawOutput, FaultingThreadRegex());
-        return int.TryParse(value, out var threadId) ? threadId : null;
+        if (value is null)
+        {
+            return null;
+        }
+
+        return int.TryParse(value, System.Globalization.NumberStyles.HexNumber, null, out var threadId)
+            || int.TryParse(value, out threadId)
+                ? threadId
+                : null;
     }
 
     private static string DetermineSymbolStatus(string rawOutput)
@@ -260,6 +285,30 @@ internal static partial class CdbOutputParser
             _ => code is null ? null : "Windows exception"
         };
 
+    private static string? CleanModuleName(string? module)
+    {
+        if (string.IsNullOrWhiteSpace(module))
+        {
+            return null;
+        }
+
+        var parts = module.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 1 ? parts[^1] : module.Trim();
+    }
+
+    private static string? NormalizeExceptionCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return null;
+        }
+
+        var trimmed = code.Trim();
+        return trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? trimmed.ToUpperInvariant()
+            : $"0x{trimmed}".ToUpperInvariant();
+    }
+
     private static string? FirstMatch(string text, Regex regex)
     {
         var match = regex.Match(text);
@@ -268,6 +317,9 @@ internal static partial class CdbOutputParser
 
     [GeneratedRegex(@"EXCEPTION_CODE:\s+\((?:NTSTATUS\)?\s*)?(0x[0-9a-fA-F]+|[0-9a-fA-F]{8})", RegexOptions.IgnoreCase)]
     private static partial Regex ExceptionCodeRegex();
+
+    [GeneratedRegex(@"EXCEPTION_CODE_STR:\s+(0x[0-9a-fA-F]+|[0-9a-fA-F]{8})", RegexOptions.IgnoreCase)]
+    private static partial Regex ExceptionCodeStrRegex();
 
     [GeneratedRegex(@"FAULTING_MODULE:\s+([^\r\n]+)", RegexOptions.IgnoreCase)]
     private static partial Regex FaultingModuleRegex();
@@ -281,10 +333,9 @@ internal static partial class CdbOutputParser
     [GeneratedRegex(@"Probably caused by\s+:\s+([^\r\n]+)", RegexOptions.IgnoreCase)]
     private static partial Regex ProbablyCausedByRegex();
 
-    [GeneratedRegex(@"FAULTING_THREAD:\s+(\d+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"FAULTING_THREAD:\s+([0-9a-fA-F]+)", RegexOptions.IgnoreCase)]
     private static partial Regex FaultingThreadRegex();
 
-    [GeneratedRegex(@"^\s*[0-9a-fA-F`]+\s+[0-9a-fA-F`]+\s+(?<symbol>[A-Za-z0-9_.$<>?@~+\-]+![^\s+]+|[A-Za-z0-9_.$<>?@~+\-]+)\+?0x?[0-9a-fA-F]*", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^\s*[0-9a-fA-F`]{8,}\s+[0-9a-fA-F`]{8,}\s+(?<symbol>[A-Za-z0-9_.$<>?@~\-]+![^\s+]+|[A-Za-z0-9_.$<>?@~\-]+)(?:\+0x?[0-9a-fA-F]+)?", RegexOptions.Multiline)]
     private static partial Regex StackFrameRegex();
 }
-
