@@ -57,6 +57,7 @@ static async Task<AnalysisResult> ReadAnalysisOrPendingAsync(string path, Guid d
 
 static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis, string? rawDebuggerOutput)
 {
+    var recommendation = BuildRecommendation(metadata, analysis);
     var stackRows = analysis.CallStack.Count == 0
         ? "<tr><td colspan=\"5\">No stack frames available yet.</td></tr>"
         : string.Join(Environment.NewLine, analysis.CallStack.Select(frame =>
@@ -75,6 +76,7 @@ static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis, string?
             .item { border: 1px solid #d1d5db; border-radius: 6px; padding: 12px; }
             .label { color: #6b7280; font-size: 12px; text-transform: uppercase; }
             .value { font-size: 15px; margin-top: 4px; word-break: break-word; }
+            .callout { border-left: 4px solid #2563eb; background: #eff6ff; padding: 12px 14px; border-radius: 4px; }
             table { width: 100%; border-collapse: collapse; margin-top: 12px; }
             th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
             th { background: #f3f4f6; }
@@ -92,7 +94,8 @@ static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis, string?
             {{Item("PID", metadata.Pid.ToString())}}
             {{Item("Reason", metadata.CaptureReason)}}
             {{Item("Dump Type", metadata.DumpType)}}
-            {{Item("Exception", analysis.ExceptionCode ?? metadata.ExceptionCode ?? "Not available")}}
+            {{Item("Metadata Exception", metadata.ExceptionCode ?? "Not available")}}
+            {{Item("Analyzer Exception", analysis.ExceptionCode ?? "Not available")}}
             {{Item("Faulting Module", analysis.FaultingModule ?? "Not available")}}
             {{Item("Symbol Status", analysis.SymbolStatus)}}
             {{Item("Status", analysis.Status)}}
@@ -100,6 +103,9 @@ static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis, string?
 
           <h2>Probable Cause</h2>
           <p>{{E(analysis.ProbableCause ?? "No probable cause generated yet.")}}</p>
+
+          <h2>Recommended Next Action</h2>
+          <p class="callout">{{E(recommendation)}}</p>
 
           <h2>Dump File</h2>
           <p><code>{{E(metadata.DumpFilePath)}}</code></p>
@@ -126,6 +132,33 @@ static string RawOutputSection(string? rawDebuggerOutput) =>
     string.IsNullOrWhiteSpace(rawDebuggerOutput)
         ? string.Empty
         : $"""<details><summary>Raw Debugger Output</summary><pre>{E(rawDebuggerOutput)}</pre></details>""";
+
+static string BuildRecommendation(DumpMetadata metadata, AnalysisResult analysis)
+{
+    var code = analysis.ExceptionCode ?? metadata.ExceptionCode;
+
+    if (string.Equals(code, "0xC0000005", StringComparison.OrdinalIgnoreCase))
+    {
+        return "Investigate invalid memory access around the top stack frames. Check null pointers, object lifetime, and buffer boundaries.";
+    }
+
+    if (string.Equals(code, "0xE0434352", StringComparison.OrdinalIgnoreCase))
+    {
+        return "This is a .NET CLR exception. Add managed dump support with SOS or reproduce with application logs to identify the managed exception type and source line.";
+    }
+
+    if (analysis.SymbolStatus is "Partial" or "Unknown")
+    {
+        return "Improve symbol loading first. Configure local PDB paths and Microsoft public symbols, then re-run analysis.";
+    }
+
+    if (metadata.CaptureReason == "Imported")
+    {
+        return "Imported dump analysis is complete. Compare the top stack frames with source history and re-run with symbols if frames are incomplete.";
+    }
+
+    return "Review the top stack frames and raw debugger output, then re-run analysis after adding private symbols for the target application.";
+}
 
 static string E(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 

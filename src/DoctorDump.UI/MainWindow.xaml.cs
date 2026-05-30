@@ -7,6 +7,7 @@ using System.Windows;
 using DoctorDump.Core;
 using DoctorDump.Core.Json;
 using DoctorDump.Core.Models;
+using Microsoft.Win32;
 
 namespace DoctorDump.UI;
 
@@ -31,6 +32,37 @@ public partial class MainWindow : Window
 
     private async void MonitorCrash_Click(object sender, RoutedEventArgs e) =>
         await RunAgentWorkflowAsync("monitor", "Monitoring for crash", "Captured crash dump");
+
+    private async void AnalyzeExistingDump_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select dump file",
+            Filter = "Dump files (*.dmp)|*.dmp|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            StatusText.Text = $"Importing dump: {dialog.FileName}";
+            var metadataPath = await ImportExistingDumpAsync(dialog.FileName);
+            var reportPath = await AnalyzeAndReportAsync(metadataPath);
+            StatusText.Text = reportPath is null
+                ? "Dump imported. Report generation skipped."
+                : $"Dump analyzed and report generated: {reportPath}";
+            RefreshHistory();
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Analyze dump failed: {ex.Message}";
+        }
+    }
 
     private async Task RunAgentWorkflowAsync(string command, string progressVerb, string successVerb)
     {
@@ -95,12 +127,84 @@ public partial class MainWindow : Window
             return;
         }
 
-        await AnalyzeDumpAsync(metadataPath);
-        var reportPath = await GenerateReportAsync(metadataPath);
+        var reportPath = await AnalyzeAndReportAsync(metadataPath);
         StatusText.Text = reportPath is null
             ? $"{output.Trim()} Report generation skipped."
             : $"{successVerb} and generated report: {reportPath}";
 
+        RefreshHistory();
+    }
+
+    private async void ReAnalyze_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not DumpMetadata metadata)
+        {
+            return;
+        }
+
+        var metadataPath = FindMetadataPath(metadata);
+        if (metadataPath is null)
+        {
+            StatusText.Text = "Metadata file not found for this entry.";
+            return;
+        }
+
+        var reportPath = await AnalyzeAndReportAsync(metadataPath);
+        StatusText.Text = reportPath is null
+            ? "Re-analysis finished, but report generation skipped."
+            : $"Re-analysis complete: {reportPath}";
+        RefreshHistory();
+    }
+
+    private void OpenFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not DumpMetadata metadata)
+        {
+            return;
+        }
+
+        var folder = Path.GetDirectoryName(metadata.DumpFilePath);
+        if (folder is null || !Directory.Exists(folder))
+        {
+            StatusText.Text = "Dump folder not found.";
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = folder,
+            UseShellExecute = true
+        });
+    }
+
+    private void DeleteEntry_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not DumpMetadata metadata)
+        {
+            return;
+        }
+
+        var folder = Path.GetDirectoryName(metadata.DumpFilePath);
+        if (folder is null || !Directory.Exists(folder))
+        {
+            StatusText.Text = "Dump folder not found.";
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            this,
+            $"Delete dump entry for {metadata.ProcessName}?",
+            "Delete dump entry",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        Directory.Delete(folder, recursive: true);
+        StatusText.Text = "Dump entry deleted.";
         RefreshHistory();
     }
 
@@ -228,6 +332,44 @@ public partial class MainWindow : Window
         return Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Analyzer", "bin", "Debug", "net10.0", "DoctorDump.Analyzer.exe"));
     }
 
+    private static async Task<string?> AnalyzeAndReportAsync(string metadataPath)
+    {
+        await AnalyzeDumpAsync(metadataPath);
+        return await GenerateReportAsync(metadataPath);
+    }
+
+    private static async Task<string> ImportExistingDumpAsync(string sourceDumpPath)
+    {
+        var capturedAt = DateTimeOffset.UtcNow;
+        var dumpId = Guid.NewGuid();
+        var captureFolder = Path.Combine(DumpDoctorPaths.GetDatedDumpFolder(capturedAt), dumpId.ToString("D").ToUpperInvariant());
+        Directory.CreateDirectory(captureFolder);
+
+        var importedDumpPath = Path.Combine(captureFolder, $"{dumpId:D}.dmp");
+        File.Copy(sourceDumpPath, importedDumpPath, overwrite: false);
+
+        var metadata = new DumpMetadata
+        {
+            DumpId = dumpId,
+            ProcessName = Path.GetFileNameWithoutExtension(sourceDumpPath),
+            Pid = 0,
+            ProcessPath = sourceDumpPath,
+            Architecture = "Unknown",
+            CapturedAtUtc = capturedAt,
+            CaptureReason = "Imported",
+            ExceptionCode = null,
+            DumpType = "ImportedDump",
+            DumpFilePath = importedDumpPath,
+            MachineName = Environment.MachineName,
+            OsVersion = Environment.OSVersion.VersionString,
+            DoctorDumpVersion = "0.1.0"
+        };
+
+        var metadataPath = Path.Combine(captureFolder, "metadata.json");
+        await File.WriteAllTextAsync(metadataPath, JsonSerializer.Serialize(metadata, JsonDefaults.Options));
+        return metadataPath;
+    }
+
     private static async Task AnalyzeDumpAsync(string metadataPath)
     {
         var metadata = await ReadMetadataAsync(metadataPath);
@@ -324,6 +466,18 @@ public partial class MainWindow : Window
 
         await reporter.WaitForExitAsync();
         return reporter.ExitCode == 0 ? reportPath : null;
+    }
+
+    private static string? FindMetadataPath(DumpMetadata metadata)
+    {
+        var folder = Path.GetDirectoryName(metadata.DumpFilePath);
+        if (folder is null)
+        {
+            return null;
+        }
+
+        var metadataPath = Path.Combine(folder, "metadata.json");
+        return File.Exists(metadataPath) ? metadataPath : null;
     }
 
     private static async Task<DumpMetadata> ReadMetadataAsync(string metadataPath)

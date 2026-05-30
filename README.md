@@ -2,6 +2,15 @@
 
 DoctorDump is a Windows crash diagnostics project for native and .NET desktop applications. The MVP captures process dumps, stores metadata, and generates developer-friendly reports.
 
+## Current Features
+
+- List running Windows processes.
+- Capture a manual mini dump from a selected process.
+- Monitor a process for an unhandled crash and capture at the second-chance exception.
+- Import and analyze an existing `.dmp` file.
+- Generate HTML reports with stack frames, exception details, recommendations, and raw debugger output.
+- Open reports, open dump folders, re-analyze, and delete local history entries from the WPF UI.
+
 ## Project Layout
 
 ```text

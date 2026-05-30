@@ -106,6 +106,17 @@ DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --outp
 7. UI runs Analyzer with the metadata exception code.
 8. Reporter generates the HTML report.
 
+## Existing Dump Import Flow
+
+1. User clicks Analyze Dump.
+2. UI opens a file picker for `.dmp` files.
+3. UI creates a local capture folder under `%LOCALAPPDATA%\DumpDoctor\dumps`.
+4. UI copies the selected dump into the capture folder.
+5. UI writes `metadata.json` with `captureReason` set to `Imported`.
+6. Analyzer runs against the imported dump.
+7. Reporter generates the HTML report.
+8. The imported dump appears in history.
+
 ## Agent Design
 
 The native agent owns Windows-specific diagnostic work.

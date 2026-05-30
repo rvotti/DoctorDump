@@ -22,6 +22,7 @@
                 <Button Content="Refresh" Width="96" Height="34" Margin="8,0,0,0" Click="Refresh_Click" />
                 <Button Content="Capture" Width="104" Height="34" Margin="8,0,0,0" Click="Capture_Click" />
                 <Button Content="Monitor Crash" Width="128" Height="34" Margin="8,0,0,0" Click="MonitorCrash_Click" />
+                <Button Content="Analyze Dump" Width="124" Height="34" Margin="8,0,0,0" Click="AnalyzeExistingDump_Click" />
             </StackPanel>
         </DockPanel>
 
@@ -74,7 +75,12 @@
                                     <TextBlock Text="{Binding ProcessName}" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding CapturedAtUtc}" Foreground="#4B5563" FontSize="12" />
                                     <TextBlock Text="{Binding DumpFilePath}" Foreground="#6B7280" FontSize="12" TextWrapping="Wrap" />
-                                    <Button Content="Open Report" Width="96" Height="28" Margin="0,8,0,0" HorizontalAlignment="Left" Click="OpenReport_Click" />
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <Button Content="Open Report" Width="96" Height="28" Margin="0,0,6,0" Click="OpenReport_Click" />
+                                        <Button Content="Folder" Width="68" Height="28" Margin="0,0,6,0" Click="OpenFolder_Click" />
+                                        <Button Content="Re-analyze" Width="86" Height="28" Margin="0,0,6,0" Click="ReAnalyze_Click" />
+                                        <Button Content="Delete" Width="64" Height="28" Click="DeleteEntry_Click" />
+                                    </WrapPanel>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
