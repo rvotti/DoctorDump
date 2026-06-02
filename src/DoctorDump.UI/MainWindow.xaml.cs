@@ -36,6 +36,24 @@ public partial class MainWindow : Window
     private async void MonitorCrash_Click(object sender, RoutedEventArgs e) =>
         await RunAgentWorkflowAsync("monitor", "Monitoring for crash", "Captured crash dump");
 
+    private async void LaunchApp_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Select executable to launch and monitor",
+            Filter = "Executables (*.exe)|*.exe|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        await RunLaunchWorkflowAsync(dialog.FileName);
+    }
+
     private async void AnalyzeExistingDump_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
@@ -134,6 +152,71 @@ public partial class MainWindow : Window
         StatusText.Text = reportPath is null
             ? $"{output.Trim()} Report generation skipped."
             : $"{successVerb} and generated report: {reportPath}";
+
+        RefreshHistory();
+    }
+
+    private async Task RunLaunchWorkflowAsync(string executablePath)
+    {
+        var outputRoot = DumpDoctorPaths.GetDatedDumpFolder(_settings.OutputDirectory, DateTimeOffset.UtcNow);
+        Directory.CreateDirectory(outputRoot);
+
+        var agentPath = FindAgentPath();
+        if (!File.Exists(agentPath))
+        {
+            StatusText.Text = $"Agent not found yet: {agentPath}";
+            return;
+        }
+
+        StatusText.Text = $"Launching and monitoring: {executablePath}";
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = agentPath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        startInfo.ArgumentList.Add("launch");
+        startInfo.ArgumentList.Add("--exe");
+        startInfo.ArgumentList.Add(executablePath);
+        startInfo.ArgumentList.Add("--type");
+        startInfo.ArgumentList.Add(_settings.DumpType);
+        startInfo.ArgumentList.Add("--output");
+        startInfo.ArgumentList.Add(outputRoot);
+
+        using var launch = Process.Start(startInfo);
+        if (launch is null)
+        {
+            StatusText.Text = "Could not start agent.";
+            return;
+        }
+
+        var output = await launch.StandardOutput.ReadToEndAsync();
+        var error = await launch.StandardError.ReadToEndAsync();
+        await launch.WaitForExitAsync();
+
+        if (launch.ExitCode != 0)
+        {
+            StatusText.Text = $"launch failed: {error.Trim()}";
+            return;
+        }
+
+        var metadataPath = Directory.EnumerateFiles(outputRoot, "metadata.json", SearchOption.AllDirectories)
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
+
+        if (metadataPath is null)
+        {
+            StatusText.Text = $"{output.Trim()} Metadata was not created.";
+            RefreshHistory();
+            return;
+        }
+
+        var reportPath = await AnalyzeAndReportAsync(metadataPath);
+        StatusText.Text = reportPath is null
+            ? $"{output.Trim()} Report generation skipped."
+            : $"Launched app, captured crash, and generated report: {reportPath}";
 
         RefreshHistory();
     }

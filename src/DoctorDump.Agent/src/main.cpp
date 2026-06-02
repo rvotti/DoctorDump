@@ -18,6 +18,8 @@ struct Args
     DWORD pid = 0;
     std::wstring dumpType = L"mini";
     fs::path output;
+    std::wstring exePath;
+    std::wstring targetArgs;
     bool json = false;
 };
 
@@ -152,6 +154,34 @@ std::wstring FormatExceptionCode(DWORD exceptionCode)
     wchar_t buffer[16]{};
     swprintf_s(buffer, L"0x%08X", exceptionCode);
     return buffer;
+}
+
+std::wstring QuoteCommandLinePart(const std::wstring& value)
+{
+    if (value.empty())
+    {
+        return L"\"\"";
+    }
+
+    if (value.find_first_of(L" \t\"") == std::wstring::npos)
+    {
+        return value;
+    }
+
+    std::wstring quoted = L"\"";
+    for (const auto ch : value)
+    {
+        if (ch == L'"')
+        {
+            quoted += L"\\\"";
+        }
+        else
+        {
+            quoted += ch;
+        }
+    }
+    quoted += L"\"";
+    return quoted;
 }
 
 int ListProcesses(bool json)
@@ -307,18 +337,12 @@ int CaptureDump(DWORD pid, const fs::path& output, const std::wstring& dumpType)
     return result;
 }
 
-int MonitorProcess(DWORD pid, const fs::path& output, const std::wstring& dumpType)
+int RunDebugLoop(DWORD pid, HANDLE initialProcessHandle, const fs::path& output, const std::wstring& dumpType, bool detachOnExit)
 {
-    if (!DebugActiveProcess(pid))
-    {
-        std::wcerr << L"DebugActiveProcess failed: " << GetLastErrorMessage() << L"\n";
-        return 1;
-    }
-
     DebugSetProcessKillOnExit(FALSE);
     std::wcout << L"Monitoring process " << pid << L" for unhandled exceptions...\n";
 
-    HANDLE processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
+    HANDLE processHandle = initialProcessHandle;
     bool captured = false;
     int result = 0;
 
@@ -419,7 +443,10 @@ int MonitorProcess(DWORD pid, const fs::path& output, const std::wstring& dumpTy
         ContinueDebugEvent(debugEvent.dwProcessId, debugEvent.dwThreadId, continueStatus);
     }
 
-    DebugActiveProcessStop(pid);
+    if (detachOnExit)
+    {
+        DebugActiveProcessStop(pid);
+    }
 
     if (processHandle)
     {
@@ -429,6 +456,66 @@ int MonitorProcess(DWORD pid, const fs::path& output, const std::wstring& dumpTy
     return result;
 }
 
+int MonitorProcess(DWORD pid, const fs::path& output, const std::wstring& dumpType)
+{
+    if (!DebugActiveProcess(pid))
+    {
+        std::wcerr << L"DebugActiveProcess failed: " << GetLastErrorMessage() << L"\n";
+        return 1;
+    }
+
+    HANDLE processHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
+    return RunDebugLoop(pid, processHandle, output, dumpType, true);
+}
+
+int LaunchAndMonitor(const std::wstring& exePath, const std::wstring& targetArgs, const fs::path& output, const std::wstring& dumpType)
+{
+    if (exePath.empty())
+    {
+        std::wcerr << L"--exe is required for launch.\n";
+        return 2;
+    }
+
+    auto commandLine = QuoteCommandLinePart(exePath);
+    if (!targetArgs.empty())
+    {
+        commandLine += L" ";
+        commandLine += targetArgs;
+    }
+
+    STARTUPINFOW startupInfo{};
+    startupInfo.cb = sizeof(startupInfo);
+    PROCESS_INFORMATION processInfo{};
+
+    std::vector<wchar_t> mutableCommandLine(commandLine.begin(), commandLine.end());
+    mutableCommandLine.push_back(L'\0');
+
+    const BOOL created = CreateProcessW(
+        exePath.c_str(),
+        mutableCommandLine.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        DEBUG_ONLY_THIS_PROCESS,
+        nullptr,
+        nullptr,
+        &startupInfo,
+        &processInfo);
+
+    if (!created)
+    {
+        std::wcerr << L"CreateProcessW failed: " << GetLastErrorMessage() << L"\n";
+        return 1;
+    }
+
+    if (processInfo.hThread)
+    {
+        CloseHandle(processInfo.hThread);
+    }
+
+    return RunDebugLoop(processInfo.dwProcessId, processInfo.hProcess, output, dumpType, false);
+}
+
 void PrintUsage()
 {
     std::wcout
@@ -436,7 +523,8 @@ void PrintUsage()
         << L"Usage:\n"
         << L"  DoctorDump.Agent.exe list [--json]\n"
         << L"  DoctorDump.Agent.exe capture --pid 1234 --type mini --output C:\\Dumps\n"
-        << L"  DoctorDump.Agent.exe monitor --pid 1234 --type mini --output C:\\Dumps\n";
+        << L"  DoctorDump.Agent.exe monitor --pid 1234 --type mini --output C:\\Dumps\n"
+        << L"  DoctorDump.Agent.exe launch --exe C:\\App\\App.exe --args \"--crash\" --type mini --output C:\\Dumps\n";
 }
 
 Args ParseArgs(int argc, wchar_t* argv[])
@@ -467,6 +555,8 @@ Args ParseArgs(int argc, wchar_t* argv[])
     }
 
     parsed.output = GetArgValue(values, L"--output");
+    parsed.exePath = GetArgValue(values, L"--exe");
+    parsed.targetArgs = GetArgValue(values, L"--args");
     return parsed;
 }
 
@@ -487,6 +577,11 @@ int wmain(int argc, wchar_t* argv[])
     if (args.command == L"monitor" && args.pid != 0 && !args.output.empty())
     {
         return MonitorProcess(args.pid, args.output, args.dumpType);
+    }
+
+    if (args.command == L"launch" && !args.exePath.empty() && !args.output.empty())
+    {
+        return LaunchAndMonitor(args.exePath, args.targetArgs, args.output, args.dumpType);
     }
 
     PrintUsage();

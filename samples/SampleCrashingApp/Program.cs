@@ -1,5 +1,17 @@
 using System.Runtime.InteropServices;
 
+if (args.Contains("--native-crash", StringComparer.OrdinalIgnoreCase))
+{
+    CauseNativeAccessViolation();
+    return;
+}
+
+if (args.Contains("--managed-crash", StringComparer.OrdinalIgnoreCase))
+{
+    CauseManagedNullReference();
+    return;
+}
+
 Console.WriteLine("SampleCrashingApp");
 Console.WriteLine("1. Managed null reference crash");
 Console.WriteLine("2. Native access violation crash");
@@ -26,4 +38,3 @@ static unsafe void CauseNativeAccessViolation()
 {
     Marshal.WriteInt32(IntPtr.Zero, 42);
 }
-

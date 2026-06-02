@@ -78,6 +78,7 @@ logs\
 DoctorDump.Agent.exe list --json
 DoctorDump.Agent.exe capture --pid 1234 --type mini --output "%LOCALAPPDATA%\DumpDoctor\dumps"
 DoctorDump.Agent.exe monitor --pid 1234 --type mini --output "%LOCALAPPDATA%\DumpDoctor\dumps"
+DoctorDump.Agent.exe launch --exe "C:\Apps\App.exe" --args "--crash" --type mini --output "%LOCALAPPDATA%\DumpDoctor\dumps"
 DoctorDump.Analyzer.exe --dump dump.dmp --dump-id {dumpId} --output {capture-folder}
 DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --output report.html
 ```
@@ -105,6 +106,15 @@ DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --outp
 6. Agent writes crash metadata including the exception code from the debug event.
 7. UI runs Analyzer with the metadata exception code.
 8. Reporter generates the HTML report.
+
+## Launch And Monitor Flow
+
+1. User clicks Launch App.
+2. UI opens a file picker for `.exe` files.
+3. Agent starts the selected executable with `DEBUG_ONLY_THIS_PROCESS`.
+4. Agent waits for a second-chance exception.
+5. Agent captures the dump and writes crash metadata.
+6. UI runs Analyzer and Reporter.
 
 ## Existing Dump Import Flow
 

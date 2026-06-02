@@ -7,6 +7,7 @@ DoctorDump is a Windows crash diagnostics project for native and .NET desktop ap
 - List running Windows processes.
 - Capture a manual mini dump from a selected process.
 - Monitor a process for an unhandled crash and capture at the second-chance exception.
+- Launch an executable under crash monitoring.
 - Import and analyze an existing `.dmp` file.
 - Generate HTML reports with stack frames, exception details, recommendations, and raw debugger output.
 - Open reports, open dump folders, re-analyze, and delete local history entries from the WPF UI.
@@ -33,6 +34,7 @@ docs/
 DoctorDump.Agent.exe list --json
 DoctorDump.Agent.exe capture --pid 1234 --type mini --output "$env:LOCALAPPDATA\DumpDoctor\dumps"
 DoctorDump.Agent.exe monitor --pid 1234 --type mini --output "$env:LOCALAPPDATA\DumpDoctor\dumps"
+DoctorDump.Agent.exe launch --exe "C:\Apps\App.exe" --args "--crash" --type mini --output "$env:LOCALAPPDATA\DumpDoctor\dumps"
 DoctorDump.Analyzer.exe --dump file.dmp --dump-id "<guid>" --output "<capture-folder>" --exception-code 0xE0434352
 DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --output report.html
 ```
@@ -60,6 +62,6 @@ The WPF settings row controls dump type, output folder, symbol path, automatic a
 - Add crash monitoring mode.
 - Improve `cdb.exe` parser coverage for more crash shapes.
 - Add real managed dump support with SOS.
-- Add launch-and-monitor support so DoctorDump can start a target app and capture its first crash.
+- Add launch argument support in the WPF UI.
 - Add settings for symbol path and dump retention.
 - Add Azure upload and team dashboard after the local MVP is stable.
