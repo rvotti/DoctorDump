@@ -147,7 +147,27 @@ The WPF UI is intentionally simple for MVP:
 - Capture button.
 - Dump history list.
 - Report preview/open action.
-- Settings page for output folder and symbol path.
+- Settings row for dump type, output folder, symbol path, auto-analysis, and retention days.
+
+## Settings
+
+Settings are persisted to:
+
+```text
+%LOCALAPPDATA%\DumpDoctor\config\settings.json
+```
+
+```json
+{
+  "dumpType": "mini",
+  "symbolPath": "srv*C:\\Symbols*https://msdl.microsoft.com/download/symbols",
+  "outputDirectory": "%LOCALAPPDATA%\\DumpDoctor\\dumps",
+  "autoAnalyze": true,
+  "keepDumpsForDays": 30
+}
+```
+
+The UI loads settings at startup and uses them for manual capture, crash monitoring, imported dump analysis, report generation, history discovery, and retention cleanup.
 
 ## Analyzer Design
 

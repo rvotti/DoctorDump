@@ -7,7 +7,9 @@ using System.Windows;
 using DoctorDump.Core;
 using DoctorDump.Core.Json;
 using DoctorDump.Core.Models;
+using DoctorDump.Core.Settings;
 using Microsoft.Win32;
+using System.Windows.Controls;
 
 namespace DoctorDump.UI;
 
@@ -16,13 +18,14 @@ public partial class MainWindow : Window
     public ObservableCollection<ProcessSnapshot> Processes { get; } = [];
     public ObservableCollection<ProcessSnapshot> FilteredProcesses { get; } = [];
     public ObservableCollection<DumpMetadata> DumpHistory { get; } = [];
+    private DumpSettings _settings = new();
 
     public MainWindow()
     {
         InitializeComponent();
         DataContext = this;
         RefreshProcesses();
-        RefreshHistory();
+        Loaded += async (_, _) => await LoadSettingsAsync();
     }
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => RefreshProcesses();
@@ -51,7 +54,7 @@ public partial class MainWindow : Window
         try
         {
             StatusText.Text = $"Importing dump: {dialog.FileName}";
-            var metadataPath = await ImportExistingDumpAsync(dialog.FileName);
+            var metadataPath = await ImportExistingDumpAsync(dialog.FileName, _settings);
             var reportPath = await AnalyzeAndReportAsync(metadataPath);
             StatusText.Text = reportPath is null
                 ? "Dump imported. Report generation skipped."
@@ -72,7 +75,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var outputRoot = DumpDoctorPaths.GetDatedDumpFolder(DateTimeOffset.UtcNow);
+        var outputRoot = DumpDoctorPaths.GetDatedDumpFolder(_settings.OutputDirectory, DateTimeOffset.UtcNow);
         Directory.CreateDirectory(outputRoot);
 
         var agentPath = FindAgentPath();
@@ -95,7 +98,7 @@ public partial class MainWindow : Window
         startInfo.ArgumentList.Add("--pid");
         startInfo.ArgumentList.Add(process.Pid.ToString());
         startInfo.ArgumentList.Add("--type");
-        startInfo.ArgumentList.Add("mini");
+        startInfo.ArgumentList.Add(_settings.DumpType);
         startInfo.ArgumentList.Add("--output");
         startInfo.ArgumentList.Add(outputRoot);
 
@@ -273,12 +276,12 @@ public partial class MainWindow : Window
     {
         DumpHistory.Clear();
 
-        if (!Directory.Exists(DumpDoctorPaths.DefaultDumpRoot))
+        if (!Directory.Exists(_settings.OutputDirectory))
         {
             return;
         }
 
-        foreach (var file in Directory.EnumerateFiles(DumpDoctorPaths.DefaultDumpRoot, "metadata.json", SearchOption.AllDirectories)
+        foreach (var file in Directory.EnumerateFiles(_settings.OutputDirectory, "metadata.json", SearchOption.AllDirectories)
                      .OrderByDescending(File.GetLastWriteTimeUtc)
                      .Take(25))
         {
@@ -332,17 +335,20 @@ public partial class MainWindow : Window
         return Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Analyzer", "bin", "Debug", "net10.0", "DoctorDump.Analyzer.exe"));
     }
 
-    private static async Task<string?> AnalyzeAndReportAsync(string metadataPath)
+    private async Task<string?> AnalyzeAndReportAsync(string metadataPath)
     {
-        await AnalyzeDumpAsync(metadataPath);
+        if (_settings.AutoAnalyze)
+        {
+            await AnalyzeDumpAsync(metadataPath, _settings);
+        }
         return await GenerateReportAsync(metadataPath);
     }
 
-    private static async Task<string> ImportExistingDumpAsync(string sourceDumpPath)
+    private static async Task<string> ImportExistingDumpAsync(string sourceDumpPath, DumpSettings settings)
     {
         var capturedAt = DateTimeOffset.UtcNow;
         var dumpId = Guid.NewGuid();
-        var captureFolder = Path.Combine(DumpDoctorPaths.GetDatedDumpFolder(capturedAt), dumpId.ToString("D").ToUpperInvariant());
+        var captureFolder = Path.Combine(DumpDoctorPaths.GetDatedDumpFolder(settings.OutputDirectory, capturedAt), dumpId.ToString("D").ToUpperInvariant());
         Directory.CreateDirectory(captureFolder);
 
         var importedDumpPath = Path.Combine(captureFolder, $"{dumpId:D}.dmp");
@@ -370,7 +376,7 @@ public partial class MainWindow : Window
         return metadataPath;
     }
 
-    private static async Task AnalyzeDumpAsync(string metadataPath)
+    private static async Task AnalyzeDumpAsync(string metadataPath, DumpSettings settings)
     {
         var metadata = await ReadMetadataAsync(metadataPath);
         var folder = Path.GetDirectoryName(metadataPath)!;
@@ -398,6 +404,8 @@ public partial class MainWindow : Window
         startInfo.ArgumentList.Add(metadata.DumpId.ToString());
         startInfo.ArgumentList.Add("--output");
         startInfo.ArgumentList.Add(folder);
+        startInfo.ArgumentList.Add("--symbols");
+        startInfo.ArgumentList.Add(settings.SymbolPath);
         if (!string.IsNullOrWhiteSpace(metadata.ExceptionCode))
         {
             startInfo.ArgumentList.Add("--exception-code");
@@ -500,5 +508,78 @@ public partial class MainWindow : Window
         await File.WriteAllTextAsync(
             Path.Combine(folder, "analysis.json"),
             JsonSerializer.Serialize(analysis, JsonDefaults.Options));
+    }
+
+    private async Task LoadSettingsAsync()
+    {
+        _settings = await SettingsStore.LoadAsync();
+        ApplySettingsToControls(_settings);
+        CleanupExpiredDumps();
+        RefreshHistory();
+    }
+
+    private async void SaveSettings_Click(object sender, RoutedEventArgs e)
+    {
+        _settings = ReadSettingsFromControls();
+        await SettingsStore.SaveAsync(_settings);
+        CleanupExpiredDumps();
+        RefreshHistory();
+        StatusText.Text = $"Settings saved: {SettingsStore.SettingsPath}";
+    }
+
+    private void ApplySettingsToControls(DumpSettings settings)
+    {
+        DumpTypeBox.SelectedIndex = settings.DumpType.Equals("full", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        OutputDirectoryBox.Text = settings.OutputDirectory;
+        SymbolPathBox.Text = settings.SymbolPath;
+        AutoAnalyzeBox.IsChecked = settings.AutoAnalyze;
+        RetentionDaysBox.Text = settings.KeepDumpsForDays.ToString();
+    }
+
+    private DumpSettings ReadSettingsFromControls()
+    {
+        var dumpType = ((DumpTypeBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "mini").ToLowerInvariant();
+        var outputDirectory = string.IsNullOrWhiteSpace(OutputDirectoryBox.Text)
+            ? DumpDoctorPaths.DefaultDumpRoot
+            : Environment.ExpandEnvironmentVariables(OutputDirectoryBox.Text.Trim());
+        var symbolPath = string.IsNullOrWhiteSpace(SymbolPathBox.Text)
+            ? new DumpSettings().SymbolPath
+            : SymbolPathBox.Text.Trim();
+        var keepDays = int.TryParse(RetentionDaysBox.Text, out var parsedDays) && parsedDays > 0
+            ? parsedDays
+            : 30;
+
+        return new DumpSettings
+        {
+            DumpType = dumpType is "full" ? "full" : "mini",
+            OutputDirectory = outputDirectory,
+            SymbolPath = symbolPath,
+            AutoAnalyze = AutoAnalyzeBox.IsChecked == true,
+            KeepDumpsForDays = keepDays
+        };
+    }
+
+    private void CleanupExpiredDumps()
+    {
+        if (!Directory.Exists(_settings.OutputDirectory) || _settings.KeepDumpsForDays <= 0)
+        {
+            return;
+        }
+
+        var cutoff = DateTime.UtcNow.AddDays(-_settings.KeepDumpsForDays);
+        foreach (var directory in Directory.EnumerateDirectories(_settings.OutputDirectory, "*", SearchOption.AllDirectories))
+        {
+            try
+            {
+                if (Directory.GetLastWriteTimeUtc(directory) < cutoff)
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+            catch
+            {
+                // Retention cleanup should never block the main diagnostic workflow.
+            }
+        }
     }
 }

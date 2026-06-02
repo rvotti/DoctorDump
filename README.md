@@ -10,6 +10,7 @@ DoctorDump is a Windows crash diagnostics project for native and .NET desktop ap
 - Import and analyze an existing `.dmp` file.
 - Generate HTML reports with stack frames, exception details, recommendations, and raw debugger output.
 - Open reports, open dump folders, re-analyze, and delete local history entries from the WPF UI.
+- Configure dump type, output directory, symbol path, auto-analysis, and retention from the WPF UI.
 
 ## Project Layout
 
@@ -43,6 +44,16 @@ DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --outp
 - VS Code tasks are included. Use `Terminal > Run Build Task` and choose `build: all`.
 - The WPF UI expects the agent at `src\DoctorDump.Agent\x64\Debug\DoctorDump.Agent.exe` during local development.
 - Analyzer Phase 1 uses `cdb.exe` from Debugging Tools for Windows. If it is not installed, run the Windows SDK installer with `OptionId.WindowsDesktopDebuggers`. The analyzer writes a graceful `DebuggerNotFound` result when `cdb.exe` is unavailable.
+
+## Local Settings
+
+DoctorDump stores settings at:
+
+```text
+%LOCALAPPDATA%\DumpDoctor\config\settings.json
+```
+
+The WPF settings row controls dump type, output folder, symbol path, automatic analysis, and retention days.
 
 ## Roadmap
 

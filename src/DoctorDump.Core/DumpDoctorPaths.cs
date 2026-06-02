@@ -13,5 +13,7 @@ public static class DumpDoctorPaths
 
     public static string GetDatedDumpFolder(DateTimeOffset capturedAt) =>
         Path.Combine(DefaultDumpRoot, capturedAt.ToLocalTime().ToString("yyyy-MM-dd"));
-}
 
+    public static string GetDatedDumpFolder(string dumpRoot, DateTimeOffset capturedAt) =>
+        Path.Combine(dumpRoot, capturedAt.ToLocalTime().ToString("yyyy-MM-dd"));
+}

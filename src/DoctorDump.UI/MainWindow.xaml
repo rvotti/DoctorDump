@@ -9,6 +9,7 @@
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -26,7 +27,36 @@
             </StackPanel>
         </DockPanel>
 
-        <Grid Grid.Row="1">
+        <Border Grid.Row="1" Background="White" BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="130" />
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="100" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="96" />
+                    <ColumnDefinition Width="70" />
+                    <ColumnDefinition Width="92" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Settings" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <ComboBox x:Name="DumpTypeBox" Grid.Column="1" Height="30" VerticalContentAlignment="Center">
+                    <ComboBoxItem Content="mini" IsSelected="True" />
+                    <ComboBoxItem Content="full" />
+                </ComboBox>
+                <TextBlock Grid.Column="2" Text="Output" Margin="12,0,6,0" VerticalAlignment="Center" />
+                <TextBox x:Name="OutputDirectoryBox" Grid.Column="3" Height="30" VerticalContentAlignment="Center" />
+                <TextBlock Grid.Column="4" Text="Symbols" Margin="12,0,6,0" VerticalAlignment="Center" />
+                <TextBox x:Name="SymbolPathBox" Grid.Column="5" Height="30" VerticalContentAlignment="Center" />
+                <CheckBox x:Name="AutoAnalyzeBox" Grid.Column="6" Content="Analyze" Margin="12,0,0,0" VerticalAlignment="Center" />
+                <TextBox x:Name="RetentionDaysBox" Grid.Column="7" Height="30" Margin="8,0,0,0" VerticalContentAlignment="Center" />
+                <Button Grid.Column="8" Content="Save" Width="76" Height="30" Margin="8,0,0,0" Click="SaveSettings_Click" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="2*" />
                 <ColumnDefinition Width="16" />
@@ -89,7 +119,7 @@
             </Border>
         </Grid>
 
-        <StatusBar Grid.Row="2" Margin="0,14,0,0">
+        <StatusBar Grid.Row="3" Margin="0,14,0,0">
             <StatusBarItem>
                 <TextBlock x:Name="StatusText" Text="Ready" />
             </StatusBarItem>
