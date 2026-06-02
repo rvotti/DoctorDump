@@ -19,12 +19,18 @@
                 <TextBlock Text="DoctorDump" FontSize="26" FontWeight="SemiBold" Foreground="#111827" />
                 <TextBlock Text="Capture Windows process dumps and prepare developer-friendly reports." Foreground="#4B5563" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
-                <Button Content="Refresh" Width="96" Height="34" Margin="8,0,0,0" Click="Refresh_Click" />
-                <Button Content="Capture" Width="104" Height="34" Margin="8,0,0,0" Click="Capture_Click" />
-                <Button Content="Monitor Crash" Width="128" Height="34" Margin="8,0,0,0" Click="MonitorCrash_Click" />
-                <Button Content="Launch App" Width="112" Height="34" Margin="8,0,0,0" Click="LaunchApp_Click" />
-                <Button Content="Analyze Dump" Width="124" Height="34" Margin="8,0,0,0" Click="AnalyzeExistingDump_Click" />
+            <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Refresh" Width="96" Height="34" Margin="8,0,0,0" Click="Refresh_Click" />
+                    <Button Content="Capture" Width="104" Height="34" Margin="8,0,0,0" Click="Capture_Click" />
+                    <Button Content="Monitor Crash" Width="128" Height="34" Margin="8,0,0,0" Click="MonitorCrash_Click" />
+                    <Button Content="Launch App" Width="112" Height="34" Margin="8,0,0,0" Click="LaunchApp_Click" />
+                    <Button Content="Analyze Dump" Width="124" Height="34" Margin="8,0,0,0" Click="AnalyzeExistingDump_Click" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                    <TextBlock Text="Launch Args" Foreground="#4B5563" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox x:Name="LaunchArgsBox" Width="360" Height="30" VerticalContentAlignment="Center" />
+                </StackPanel>
             </StackPanel>
         </DockPanel>
 

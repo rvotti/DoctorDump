@@ -51,7 +51,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await RunLaunchWorkflowAsync(dialog.FileName);
+        await RunLaunchWorkflowAsync(dialog.FileName, LaunchArgsBox.Text.Trim());
     }
 
     private async void AnalyzeExistingDump_Click(object sender, RoutedEventArgs e)
@@ -156,7 +156,7 @@ public partial class MainWindow : Window
         RefreshHistory();
     }
 
-    private async Task RunLaunchWorkflowAsync(string executablePath)
+    private async Task RunLaunchWorkflowAsync(string executablePath, string launchArgs)
     {
         var outputRoot = DumpDoctorPaths.GetDatedDumpFolder(_settings.OutputDirectory, DateTimeOffset.UtcNow);
         Directory.CreateDirectory(outputRoot);
@@ -184,6 +184,11 @@ public partial class MainWindow : Window
         startInfo.ArgumentList.Add(_settings.DumpType);
         startInfo.ArgumentList.Add("--output");
         startInfo.ArgumentList.Add(outputRoot);
+        if (!string.IsNullOrWhiteSpace(launchArgs))
+        {
+            startInfo.ArgumentList.Add("--args");
+            startInfo.ArgumentList.Add(launchArgs);
+        }
 
         using var launch = Process.Start(startInfo);
         if (launch is null)

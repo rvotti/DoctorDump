@@ -112,10 +112,11 @@ DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --outp
 
 1. User clicks Launch App.
 2. UI opens a file picker for `.exe` files.
-3. Agent starts the selected executable with `DEBUG_ONLY_THIS_PROCESS`.
-4. Agent waits for a second-chance exception.
-5. Agent captures the dump and writes crash metadata.
-6. UI runs Analyzer and Reporter.
+3. UI passes optional launch arguments from the launch-args field.
+4. Agent starts the selected executable with `DEBUG_ONLY_THIS_PROCESS`.
+5. Agent waits for a second-chance exception.
+6. Agent captures the dump and writes crash metadata.
+7. UI runs Analyzer and Reporter.
 
 ## Existing Dump Import Flow
 
@@ -159,6 +160,7 @@ The WPF UI is intentionally simple for MVP:
 - Dump history list.
 - Report preview/open action.
 - Settings row for dump type, output folder, symbol path, auto-analysis, and retention days.
+- Launch argument field for `Launch App` workflows.
 
 ## Settings
 
@@ -179,6 +181,14 @@ Settings are persisted to:
 ```
 
 The UI loads settings at startup and uses them for manual capture, crash monitoring, imported dump analysis, report generation, history discovery, and retention cleanup.
+
+Symbol paths may include both private PDB folders and the Microsoft public symbol server, for example:
+
+```text
+D:\BuildSymbols;D:\ProductDrops\App1;srv*C:\Symbols*https://msdl.microsoft.com/download/symbols
+```
+
+Private native PDBs improve function/source-line resolution in `!analyze -v` and stack output. Portable PDBs for managed assemblies should be beside deployed binaries or available through the configured symbol path so SOS/debugger output can resolve managed frames more completely.
 
 ## Analyzer Design
 
@@ -209,7 +219,7 @@ For managed .NET dumps, SOS output is parsed into:
 - managed exception message
 - managed call stack frames
 
-The analyzer also exposes `--self-test` to validate parser behavior against representative debugger output.
+The analyzer also exposes `--self-test` to validate parser behavior against representative debugger output. `tests/DoctorDump.Analyzer.Tests` wraps that self-test as a normal solution-level verification command.
 
 Future analyzer improvements:
 

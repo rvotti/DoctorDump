@@ -8,4 +8,7 @@
     <Project Path="src/DoctorDump.Reporter/DoctorDump.Reporter.csproj" />
     <Project Path="src/DoctorDump.UI/DoctorDump.UI.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DoctorDump.Analyzer.Tests/DoctorDump.Analyzer.Tests.csproj" />
+  </Folder>
 </Solution>

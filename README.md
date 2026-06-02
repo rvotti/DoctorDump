@@ -17,7 +17,7 @@ Windows crash debugging is still too manual for many small teams maintaining Win
 - Extract managed .NET exception type, message, and managed call stack through SOS.
 - Generate HTML reports with native stack, managed stack, recommendations, and raw debugger output.
 - Open reports, open dump folders, re-analyze, and delete local history entries from the WPF UI.
-- Configure dump type, output directory, symbol path, auto-analysis, and retention from the WPF UI.
+- Configure dump type, output directory, symbol path, auto-analysis, retention, and launch arguments from the WPF UI.
 
 ## Two-Minute Demo
 
@@ -34,7 +34,7 @@ dotnet build DoctorDump.slnx
 dotnet run --project src\DoctorDump.UI\DoctorDump.UI.csproj
 ```
 
-3. Click **Launch App** and select:
+3. Enter optional launch arguments such as `--native-crash`, then click **Launch App** and select:
 
 ```text
 samples\SampleCrashingApp\bin\Debug\net10.0\SampleCrashingApp.exe
@@ -127,14 +127,24 @@ DoctorDump stores settings at:
 
 The WPF settings row controls dump type, output folder, symbol path, automatic analysis, and retention days.
 
+## Private Symbols And Source Lines
+
+Set the WPF **Symbols** field to include private PDB locations before the Microsoft public symbol server. For example:
+
+```text
+D:\BuildSymbols;D:\ProductDrops\App1;srv*C:\Symbols*https://msdl.microsoft.com/download/symbols
+```
+
+Private PDBs are what turn report frames from module offsets into useful function names and source lines. For .NET dumps, keep portable PDBs beside the built assemblies or include their folder in the symbol path so SOS/debugger output can resolve managed frames more completely.
+
 ## Verification
 
 ```powershell
 dotnet build DoctorDump.slnx
-src\DoctorDump.Analyzer\bin\Debug\net10.0\DoctorDump.Analyzer.exe --self-test
+dotnet run --project tests\DoctorDump.Analyzer.Tests\DoctorDump.Analyzer.Tests.csproj
 ```
 
-The analyzer self-test validates exception-code parsing, managed exception parsing, faulting-thread parsing, and managed stack extraction.
+The analyzer test project runs the parser self-test and validates exception-code parsing, managed exception parsing, faulting-thread parsing, and managed stack extraction.
 
 ## Portfolio Highlights
 
@@ -147,9 +157,7 @@ The analyzer self-test validates exception-code parsing, managed exception parsi
 
 ## Roadmap
 
-- Add launch argument support in the WPF UI.
-- Improve native symbol UX for private PDB paths.
-- Improve managed source-line resolution with private PDBs.
-- Add formal unit tests around parser fixtures.
 - Add screenshots/GIFs and a packaged release.
+- Add deeper fixture-based parser coverage for more native and managed debugger-output variants.
+- Add richer source-line extraction once private PDB resolution is present in debugger output.
 - Add optional Azure upload and team dashboard after the local MVP is stable.

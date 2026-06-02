@@ -92,6 +92,27 @@
       ],
       "dependsOn": "build: dotnet",
       "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test: analyzer parser",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "tests\\DoctorDump.Analyzer.Tests\\DoctorDump.Analyzer.Tests.csproj"
+      ],
+      "dependsOn": "build: dotnet",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test: all",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "test: analyzer parser"
+      ],
+      "group": "test",
+      "problemMatcher": []
     }
   ]
 }
