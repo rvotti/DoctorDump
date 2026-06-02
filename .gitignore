@@ -25,6 +25,7 @@ Release/
 analysis.json
 metadata.json
 report.html
+artifacts/
 
 # OS files
 Thumbs.db

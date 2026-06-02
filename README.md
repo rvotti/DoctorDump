@@ -52,6 +52,8 @@ src\DoctorDump.Agent\x64\Debug\DoctorDump.Agent.exe launch `
 
 5. Open the generated report from Dump History.
 
+For a recording checklist, see [docs/DEMO.md](docs/DEMO.md).
+
 ## Architecture
 
 ```text
@@ -146,6 +148,26 @@ dotnet run --project tests\DoctorDump.Analyzer.Tests\DoctorDump.Analyzer.Tests.c
 
 The analyzer test project runs the parser self-test and validates exception-code parsing, managed exception parsing, faulting-thread parsing, and managed stack extraction.
 
+## Build A Release ZIP
+
+```powershell
+.\scripts\package-release.ps1 -Version 0.1.0
+```
+
+If local execution policy blocks scripts, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-release.ps1 -Version 0.1.0
+```
+
+The package is written to:
+
+```text
+artifacts\release\DoctorDump-0.1.0-win-x64.zip
+```
+
+The ZIP contains the WPF app, native agent, analyzer, reporter, and sample crashing app.
+
 ## Portfolio Highlights
 
 - C++/Win32 crash capture using `MiniDumpWriteDump`.
@@ -157,7 +179,7 @@ The analyzer test project runs the parser self-test and validates exception-code
 
 ## Roadmap
 
-- Add screenshots/GIFs and a packaged release.
+- Add screenshots/GIFs to `docs/media`.
 - Add deeper fixture-based parser coverage for more native and managed debugger-output variants.
 - Add richer source-line extraction once private PDB resolution is present in debugger output.
 - Add optional Azure upload and team dashboard after the local MVP is stable.

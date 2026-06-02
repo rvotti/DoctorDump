@@ -408,19 +408,44 @@ public partial class MainWindow : Window
     private static string FindAgentPath()
     {
         var baseDirectory = AppContext.BaseDirectory;
-        return Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Agent", "x64", "Debug", "DoctorDump.Agent.exe"));
+        return FindToolPath(
+            "DoctorDump.Agent.exe",
+            Path.Combine(baseDirectory, "tools", "DoctorDump.Agent.exe"),
+            Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Agent", "x64", "Debug", "DoctorDump.Agent.exe"),
+            Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Agent", "x64", "Release", "DoctorDump.Agent.exe"));
     }
 
     private static string FindReporterPath()
     {
         var baseDirectory = AppContext.BaseDirectory;
-        return Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Reporter", "bin", "Debug", "net10.0", "DoctorDump.Reporter.exe"));
+        return FindToolPath(
+            "DoctorDump.Reporter.exe",
+            Path.Combine(baseDirectory, "tools", "Reporter", "DoctorDump.Reporter.exe"),
+            Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Reporter", "bin", "Debug", "net10.0", "DoctorDump.Reporter.exe"),
+            Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Reporter", "bin", "Release", "net10.0", "DoctorDump.Reporter.exe"));
     }
 
     private static string FindAnalyzerPath()
     {
         var baseDirectory = AppContext.BaseDirectory;
-        return Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Analyzer", "bin", "Debug", "net10.0", "DoctorDump.Analyzer.exe"));
+        return FindToolPath(
+            "DoctorDump.Analyzer.exe",
+            Path.Combine(baseDirectory, "tools", "Analyzer", "DoctorDump.Analyzer.exe"),
+            Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Analyzer", "bin", "Debug", "net10.0", "DoctorDump.Analyzer.exe"),
+            Path.Combine(baseDirectory, "..", "..", "..", "..", "DoctorDump.Analyzer", "bin", "Release", "net10.0", "DoctorDump.Analyzer.exe"));
+    }
+
+    private static string FindToolPath(string executableName, params string[] candidates)
+    {
+        var baseDirectory = AppContext.BaseDirectory;
+        var allCandidates = new[]
+            {
+                Path.Combine(baseDirectory, executableName)
+            }
+            .Concat(candidates)
+            .Select(Path.GetFullPath);
+
+        return allCandidates.FirstOrDefault(File.Exists) ?? Path.GetFullPath(candidates.First());
     }
 
     private async Task<string?> AnalyzeAndReportAsync(string metadataPath)
