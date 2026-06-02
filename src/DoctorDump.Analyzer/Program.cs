@@ -5,6 +5,11 @@ using DoctorDump.Core.Json;
 using DoctorDump.Core.Models;
 
 var options = CliOptions.Parse(args);
+if (args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
+{
+    return CdbOutputParserSelfTests.Run();
+}
+
 if (options is null)
 {
     PrintUsage();
@@ -46,6 +51,7 @@ static AnalysisResult CreateToolMissingResult(Guid dumpId) => new()
 static void PrintUsage()
 {
     Console.WriteLine("Usage: DoctorDump.Analyzer --dump file.dmp --dump-id guid --output folder [--symbols symbol-path] [--cdb path]");
+    Console.WriteLine("       DoctorDump.Analyzer --self-test");
 }
 
 internal sealed record CliOptions(
@@ -133,6 +139,9 @@ internal static class CdbRunner
             $".sympath {symbolPath}",
             ".reload",
             "!analyze -v",
+            ".loadby sos coreclr",
+            "!pe",
+            "!clrstack -f",
             "~* k",
             "lm",
             "q"
@@ -187,6 +196,9 @@ internal static partial class CdbOutputParser
             ?? FirstMatch(rawOutput, ModuleNameRegex());
         var probableCause = FirstMatch(rawOutput, ProbablyCausedByRegex());
         var stack = ParseStack(rawOutput);
+        var managedExceptionType = FirstMatch(rawOutput, ManagedExceptionTypeRegex());
+        var managedExceptionMessage = FirstMatch(rawOutput, ManagedExceptionMessageRegex());
+        var managedStack = ParseManagedStack(rawOutput);
 
         return new AnalysisResult
         {
@@ -197,8 +209,11 @@ internal static partial class CdbOutputParser
             FaultingModule = faultingModule,
             FaultingThreadId = ParseFaultingThread(rawOutput),
             SymbolStatus = DetermineSymbolStatus(rawOutput),
-            ProbableCause = BuildProbableCause(exceptionCode, exceptionDescription, probableCause, faultingModule),
-            CallStack = stack
+            ProbableCause = BuildProbableCause(exceptionCode, exceptionDescription, probableCause, faultingModule, managedExceptionType),
+            CallStack = stack,
+            ManagedExceptionType = managedExceptionType,
+            ManagedExceptionMessage = managedExceptionMessage,
+            ManagedCallStack = managedStack
         };
     }
 
@@ -211,6 +226,32 @@ internal static partial class CdbOutputParser
             var symbol = match.Groups["symbol"].Value.Trim();
             var module = symbol.Contains('!') ? symbol.Split('!', 2)[0] : null;
             var function = symbol.Contains('!') ? symbol.Split('!', 2)[1] : symbol;
+
+            frames.Add(new StackFrameInfo(
+                frames.Count,
+                string.IsNullOrWhiteSpace(module) ? null : module,
+                string.IsNullOrWhiteSpace(function) ? null : function,
+                null,
+                null));
+
+            if (frames.Count >= 40)
+            {
+                break;
+            }
+        }
+
+        return frames;
+    }
+
+    private static IReadOnlyList<StackFrameInfo> ParseManagedStack(string rawOutput)
+    {
+        var frames = new List<StackFrameInfo>();
+
+        foreach (Match match in ManagedStackFrameRegex().Matches(rawOutput))
+        {
+            var method = match.Groups["method"].Value.Trim();
+            var module = method.Contains('!') ? method.Split('!', 2)[0] : null;
+            var function = method.Contains('!') ? method.Split('!', 2)[1] : method;
 
             frames.Add(new StackFrameInfo(
                 frames.Count,
@@ -259,8 +300,13 @@ internal static partial class CdbOutputParser
         return "Unknown";
     }
 
-    private static string BuildProbableCause(string? code, string? description, string? causedBy, string? module)
+    private static string BuildProbableCause(string? code, string? description, string? causedBy, string? module, string? managedExceptionType)
     {
+        if (!string.IsNullOrWhiteSpace(managedExceptionType))
+        {
+            return $"Managed exception detected: {managedExceptionType}. Review the managed call stack and application source around the top managed frames.";
+        }
+
         if (!string.IsNullOrWhiteSpace(causedBy))
         {
             return $"Debugger reported probable cause: {causedBy}.";
@@ -340,6 +386,57 @@ internal static partial class CdbOutputParser
     [GeneratedRegex(@"FAULTING_THREAD:\s+([0-9a-fA-F]+)", RegexOptions.IgnoreCase)]
     private static partial Regex FaultingThreadRegex();
 
+    [GeneratedRegex(@"Exception type:\s+([^\r\n]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex ManagedExceptionTypeRegex();
+
+    [GeneratedRegex(@"Message:\s+([^\r\n]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex ManagedExceptionMessageRegex();
+
+    [GeneratedRegex(@"^\s*[0-9a-fA-F`]{8,}\s+[0-9a-fA-F`]{8,}\s+(?<method>(?:[A-Za-z0-9_.<>+$|[\]`,]+\.dll!|[A-Za-z0-9_.<>+$|[\]`,]+!)[^\r\n]+)", RegexOptions.Multiline)]
+    private static partial Regex ManagedStackFrameRegex();
+
     [GeneratedRegex(@"^\s*[0-9a-fA-F`]{8,}\s+[0-9a-fA-F`]{8,}\s+(?<symbol>[A-Za-z0-9_.$<>?@~\-]+![^\s+]+|[A-Za-z0-9_.$<>?@~\-]+)(?:\+0x?[0-9a-fA-F]+)?", RegexOptions.Multiline)]
     private static partial Regex StackFrameRegex();
+}
+
+internal static class CdbOutputParserSelfTests
+{
+    public static int Run()
+    {
+        var dumpId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var raw = """
+            EXCEPTION_CODE_STR:  E0434352
+            FAULTING_THREAD:  00004a44
+            MODULE_NAME: SampleCrashingApp
+            Exception object: 000002d394c0bb38
+            Exception type:   System.AccessViolationException
+            Message:          Attempted to read or write protected memory.
+            STACK_TEXT:
+            000000F3`A237C520 00007FFC`20A96C73 System_Private_CoreLib!System.Runtime.InteropServices.Marshal.WriteInt32(IntPtr, Int32, Int32)+0x43
+            000000F3`A237ECC0 00007FFB`C7D21A87 SampleCrashingApp!Program.<<Main>$>g__CauseNativeAccessViolation|0_1()+0x27
+            000000F3`A237ED00 00007FFB`C7D21920 SampleCrashingApp!Program.<Main>$(System.String[])+0xc0
+            000000F3`A237FE80 00007FF7`48CD33C6 SampleCrashingApp_exe+0x33c6
+            """;
+
+        var analysis = CdbOutputParser.Parse(dumpId, raw, null);
+
+        Assert(analysis.DumpId == dumpId, "dump id");
+        Assert(analysis.ExceptionCode == "0XE0434352", "exception code");
+        Assert(analysis.ManagedExceptionType == "System.AccessViolationException", "managed exception type");
+        Assert(analysis.ManagedExceptionMessage == "Attempted to read or write protected memory.", "managed exception message");
+        Assert(analysis.FaultingThreadId == 0x4a44, "faulting thread");
+        Assert(analysis.ManagedCallStack.Count >= 2, "managed stack frames");
+        Assert(analysis.ManagedCallStack.Any(frame => frame.Function?.Contains("CauseNativeAccessViolation", StringComparison.Ordinal) == true), "managed method frame");
+
+        Console.WriteLine("Analyzer parser self-test passed.");
+        return 0;
+    }
+
+    private static void Assert(bool condition, string name)
+    {
+        if (!condition)
+        {
+            throw new InvalidOperationException($"Self-test failed: {name}");
+        }
+    }
 }

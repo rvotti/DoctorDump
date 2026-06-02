@@ -80,6 +80,7 @@ DoctorDump.Agent.exe capture --pid 1234 --type mini --output "%LOCALAPPDATA%\Dum
 DoctorDump.Agent.exe monitor --pid 1234 --type mini --output "%LOCALAPPDATA%\DumpDoctor\dumps"
 DoctorDump.Agent.exe launch --exe "C:\Apps\App.exe" --args "--crash" --type mini --output "%LOCALAPPDATA%\DumpDoctor\dumps"
 DoctorDump.Analyzer.exe --dump dump.dmp --dump-id {dumpId} --output {capture-folder}
+DoctorDump.Analyzer.exe --self-test
 DoctorDump.Reporter.exe --metadata metadata.json --analysis analysis.json --output report.html
 ```
 
@@ -187,6 +188,9 @@ Analyzer Phase 1 shells out to `cdb.exe` because it is fast to integrate and eas
 .sympath {symbolPath}
 .reload
 !analyze -v
+.loadby sos coreclr
+!pe
+!clrstack -f
 ~* k
 lm
 q
@@ -198,6 +202,14 @@ Outputs:
 - `analysis.json`
 
 If `cdb.exe` is not installed, the analyzer writes a `DebuggerNotFound` result so the UI/report flow still completes.
+
+For managed .NET dumps, SOS output is parsed into:
+
+- managed exception type
+- managed exception message
+- managed call stack frames
+
+The analyzer also exposes `--self-test` to validate parser behavior against representative debugger output.
 
 Future analyzer improvements:
 

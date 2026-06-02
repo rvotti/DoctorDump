@@ -11,6 +11,9 @@ public sealed record AnalysisResult
     public string SymbolStatus { get; init; } = "NotRun";
     public string? ProbableCause { get; init; }
     public IReadOnlyList<StackFrameInfo> CallStack { get; init; } = [];
+    public string? ManagedExceptionType { get; init; }
+    public string? ManagedExceptionMessage { get; init; }
+    public IReadOnlyList<StackFrameInfo> ManagedCallStack { get; init; } = [];
 }
 
 public sealed record StackFrameInfo(
@@ -19,4 +22,3 @@ public sealed record StackFrameInfo(
     string? Function,
     string? Source,
     int? Line);
-

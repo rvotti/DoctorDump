@@ -58,10 +58,8 @@ static async Task<AnalysisResult> ReadAnalysisOrPendingAsync(string path, Guid d
 static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis, string? rawDebuggerOutput)
 {
     var recommendation = BuildRecommendation(metadata, analysis);
-    var stackRows = analysis.CallStack.Count == 0
-        ? "<tr><td colspan=\"5\">No stack frames available yet.</td></tr>"
-        : string.Join(Environment.NewLine, analysis.CallStack.Select(frame =>
-            $"<tr><td>{frame.Index}</td><td>{E(frame.Module)}</td><td>{E(frame.Function)}</td><td>{E(frame.Source)}</td><td>{frame.Line}</td></tr>"));
+    var stackRows = RenderStackRows(analysis.CallStack);
+    var managedStackRows = RenderStackRows(analysis.ManagedCallStack);
 
     return $$"""
         <!doctype html>
@@ -96,6 +94,7 @@ static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis, string?
             {{Item("Dump Type", metadata.DumpType)}}
             {{Item("Metadata Exception", metadata.ExceptionCode ?? "Not available")}}
             {{Item("Analyzer Exception", analysis.ExceptionCode ?? "Not available")}}
+            {{Item("Managed Exception", analysis.ManagedExceptionType ?? "Not available")}}
             {{Item("Faulting Module", analysis.FaultingModule ?? "Not available")}}
             {{Item("Symbol Status", analysis.SymbolStatus)}}
             {{Item("Status", analysis.Status)}}
@@ -109,6 +108,8 @@ static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis, string?
 
           <h2>Dump File</h2>
           <p><code>{{E(metadata.DumpFilePath)}}</code></p>
+
+          {{ManagedSection(analysis, managedStackRows)}}
 
           <h2>Faulting Thread Call Stack</h2>
           <table>
@@ -128,6 +129,34 @@ static string RenderHtml(DumpMetadata metadata, AnalysisResult analysis, string?
 static string Item(string label, string value) =>
     $"""<div class="item"><div class="label">{E(label)}</div><div class="value">{E(value)}</div></div>""";
 
+static string RenderStackRows(IReadOnlyList<StackFrameInfo> frames) =>
+    frames.Count == 0
+        ? "<tr><td colspan=\"5\">No stack frames available yet.</td></tr>"
+        : string.Join(Environment.NewLine, frames.Select(frame =>
+            $"<tr><td>{frame.Index}</td><td>{E(frame.Module)}</td><td>{E(frame.Function)}</td><td>{E(frame.Source)}</td><td>{frame.Line}</td></tr>"));
+
+static string ManagedSection(AnalysisResult analysis, string managedStackRows)
+{
+    if (string.IsNullOrWhiteSpace(analysis.ManagedExceptionType) && analysis.ManagedCallStack.Count == 0)
+    {
+        return string.Empty;
+    }
+
+    return $$"""
+          <h2>Managed Exception</h2>
+          <section class="summary">
+            {{Item("Type", analysis.ManagedExceptionType ?? "Not available")}}
+            {{Item("Message", analysis.ManagedExceptionMessage ?? "Not available")}}
+          </section>
+
+          <h2>Managed Call Stack</h2>
+          <table>
+            <thead><tr><th>#</th><th>Module</th><th>Function</th><th>Source</th><th>Line</th></tr></thead>
+            <tbody>{{managedStackRows}}</tbody>
+          </table>
+        """;
+}
+
 static string RawOutputSection(string? rawDebuggerOutput) =>
     string.IsNullOrWhiteSpace(rawDebuggerOutput)
         ? string.Empty
@@ -144,7 +173,9 @@ static string BuildRecommendation(DumpMetadata metadata, AnalysisResult analysis
 
     if (string.Equals(code, "0xE0434352", StringComparison.OrdinalIgnoreCase))
     {
-        return "This is a .NET CLR exception. Add managed dump support with SOS or reproduce with application logs to identify the managed exception type and source line.";
+        return string.IsNullOrWhiteSpace(analysis.ManagedExceptionType)
+            ? "This is a .NET CLR exception. Re-run with SOS available or use application logs to identify the managed exception type and source line."
+            : $"Investigate {analysis.ManagedExceptionType} around the top managed frames. Use private PDBs/source to map methods to exact source lines.";
     }
 
     if (analysis.SymbolStatus is "Partial" or "Unknown")
