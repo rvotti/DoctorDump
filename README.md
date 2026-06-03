@@ -54,6 +54,8 @@ src\DoctorDump.Agent\x64\Debug\DoctorDump.Agent.exe launch `
 
 For a recording checklist, see [docs/DEMO.md](docs/DEMO.md).
 
+For full technical documentation, testing steps, and recruiter Q&A, see [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md).
+
 ## Architecture
 
 ```text
@@ -86,6 +88,7 @@ samples/
   SampleCrashingApp/     Demo app with intentional crashes
 docs/
   LLD.md                 Low-level design
+  PROJECT_GUIDE.md       Technical guide, testing checklist, and recruiter Q&A
 ```
 
 ## CLI Commands
